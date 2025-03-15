@@ -3,7 +3,7 @@
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
 
-app = 'accountex-withered-frost-9329'
+app = 'accountex'
 primary_region = 'yul'
 kill_signal = 'SIGTERM'
 
@@ -12,9 +12,13 @@ kill_signal = 'SIGTERM'
 [deploy]
   release_command = '/app/bin/migrate'
 
+  [deploy.release_command_vm]
+    size = "performance-1x"
+    memory = "1gb"
 [env]
-  PHX_HOST = 'accountex-withered-frost-9329.fly.dev'
+  PHX_HOST = 'accountex.fly.dev'
   PORT = '8080'
+  PRIMARY_REGION = "yul"
 
 [http_service]
   internal_port = 8080
@@ -30,6 +34,7 @@ kill_signal = 'SIGTERM'
     soft_limit = 1000
 
 [[vm]]
-  memory = '1gb'
-  cpu_kind = 'shared'
+  size = "performance-1x"
+  memory = '2gb'
+  cpu_kind = 'performance'
   cpus = 1
