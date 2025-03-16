@@ -14,7 +14,7 @@ kill_signal = 'SIGTERM'
 
   [deploy.release_command_vm]
     size = "performance-1x"
-    memory = "1gb"
+    memory = "2gb"
 [env]
   PHX_HOST = 'accountex.fly.dev'
   PORT = '8080'
@@ -35,6 +35,6 @@ kill_signal = 'SIGTERM'
 
 [[vm]]
   size = "performance-1x"
-  memory_mb = 2048
   cpu_kind = 'performance'
+  memory = 2048
   cpus = 1
