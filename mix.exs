@@ -107,7 +107,7 @@ defmodule Accountex.MixProject do
     ]
   end
 
-  defp copy_beacon_files(%{path: path = release}) do
+  defp copy_beacon_files(%{path: path} = release) do
     build_path = Path.join([path, "bin", "_build"])
     File.mkdir_p!(build_path)
     
