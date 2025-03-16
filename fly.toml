@@ -35,6 +35,6 @@ kill_signal = 'SIGTERM'
 
 [[vm]]
   size = "performance-1x"
-  memory = '2gb'
+  memory_mb = 2048
   cpu_kind = 'performance'
   cpus = 1
