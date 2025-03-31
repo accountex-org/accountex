@@ -17,6 +17,8 @@ defmodule AccountexWeb do
   those modules here.
   """
 
+  @unnused_attr ""
+
   def static_paths, do: ~w(assets fonts images favicon.ico robots.txt)
 
   def router do
