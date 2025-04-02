@@ -7,6 +7,12 @@
 # General application configuration
 import Config
 
+# Configure the available and default locale
+config :accountex, AccountexWeb.Gettext,
+  default_locale: "en",
+  locales: ~w(en es fr),
+  priv: "priv/gettext"
+
 # Configures the endpoint
 config :accountex, AccountexWeb.Endpoint,
   url: [host: "localhost"],
