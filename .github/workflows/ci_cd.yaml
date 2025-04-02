@@ -8,21 +8,54 @@ on:
 
 jobs:
   ci:
-    runs-on: ubuntu20
-    name: Compile
+    runs-on: ubuntu-latest
+    name: Compile with mix test, format, dialyzer and unused deps check
     env:
       MIX_ENV: test
     steps:
       - uses: actions/checkout@v4
 
       - name: Setup Elixir
-        uses: erlef/setup-beam@v1.17.3
+        uses: erlef/setup-beam@v1
         with:
           version-file: .tool-versions
           version-type: strict
 
+      - name: Cache deps directory
+        uses: actions/cache@v4 
+        id: cache-deps
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-mix-
+
+      - name: Check unused dependencies
+        run: mix deps.unlock --check-unused
+
       - name: Get dependencies
+        if: steps.cache-deps.output.cache-hit != 'true'
         run: mix deps.get
 
+      - name: Cache plt files 
+        uses: actions/cache@v4 
+        env: 
+          EX_OTP_VERSIONS: ${{ steps.setup-beam.outputs.elixir-version }}
+          KEY_BASE: plt-{{ runner.os }}-${{ env.EX_OTP_VERSIONS }}
+        with: 
+          path: |
+            priv/plt-
+          key: |
+            ${{ env.KEY_BASE }}-${{ hashFiles('**/mix.lock') }}
+          restore-keys: ${{ env.KEY_BASE }}-
+
+      - name: Dialyzer static analysis
+        run: mix dialyzer --format github
+
       - run: mix compile --warnings-as-errors
+
+      - name: Run test
+        run: mix test --max-failures 1 --trace --warnings-as-errors
 

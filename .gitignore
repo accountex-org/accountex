@@ -23,9 +23,6 @@ override.tf.json
 *_override.tf
 *_override.tf.json
 
-# Ignore transient lock info files created by terraform apply
-.terraform.tfstate.lock.info
-
 # Include override files you do wish to add to version control using negated pattern
 # !example_override.tf
 
@@ -36,57 +33,33 @@ override.tf.json
 .terraformrc
 terraform.rc
 
-# Elixir / Phoenix build artifacts
+# Elixir ignore files
+# The directory Mix will write compiled artifacts to.
 /_build/
+# If you run "mix test --cover", coverage assets end up here.
+/cover/
+# The directory Mix downloads your dependencies sources to.
 /deps/
+# Where 3rd-party dependencies like ExDoc output generated docs.
+/doc/
+# Ignore .fetch files in case you like to edit your project deps locally.
+/.fetch
+# If the VM crashes, it generates a dump, let's ignore it too.
 erl_crash.dump
-
-# Elixir release builds
-/rel/
-/_release/
-
-# Elixir language-specific files
+# Also ignore archive artifacts (built via "mix archive.build").
 *.ez
-
-# Elixir LS (Elixir Language Server) - VSCode plugin
-.elixir_ls/
-
-# Testing and coverage
-cover/
-*.coverdata
-
-# Node-related (Phoenix frontend assets)
-/assets/node_modules/
-/assets/.next/
-/assets/dist/
-/assets/package-lock.json
-/assets/yarn.lock
-
-# Logs and temporary files
-/log/
-*.log
+# Temporary files, for example, from tests.
 /tmp/
-*.tmp
-*.swp
-*.swo
+# Ignore package tarball (built via "mix hex.build").
+kanban-*.tar
+# Ignore assets that are produced by build tools.
+/priv/static/assets/
+# Ignore digested assets cache.
+/priv/static/cache_manifest.json
+# In case you use Node.js/npm, you want to ignore these.
+npm-debug.log
+/assets/node_modules/
 
-# MacOS system files
-.DS_Store
-
-# VSCode settings
-.vscode/
-
-# Other editor configs
-.idea/
-*.iml
-*.sublime-workspace
-*.sublime-project
-
-# Optional: environment variable files
-.env
-.env.*
-
-# Optional: Dialyzer PLT files
-dialyzer.plt
-dial
-
+# Ignore dialyzer files
+/priv/plts/*.plt
+/priv/plts/*.plt.hash

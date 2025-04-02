@@ -8,6 +8,11 @@ defmodule Accountex.MixProject do
       elixir: "~> 1.14",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
+      dialyzer: [
+        plt_core_path: "priv/plts/core.plt",
+        plt_file: {:no_warn, "priv/plts/project.plt"},
+        plt_add_apps: [:ex_unit]
+      ],
       aliases: aliases(),
       deps: deps()
     ]
@@ -47,7 +52,9 @@ defmodule Accountex.MixProject do
       {:telemetry_poller, "~> 1.0"},
       {:gettext, "~> 0.20"},
       {:jason, "~> 1.2"},
-      {:plug_cowboy, "~> 2.5"}
+      {:plug_cowboy, "~> 2.5"},
+      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
+      {:decimal, "~> 2.3"}
     ]
   end
 
