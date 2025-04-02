@@ -10,9 +10,9 @@ defmodule AccountexWeb.CoreComponents do
   [heroicons_elixir](https://github.com/mveytsman/heroicons_elixir) project.
   """
   use Phoenix.Component
+  use Gettext, backend: AccountexWeb.Gettext
 
   alias Phoenix.LiveView.JS
-  import AccountexWeb.Gettext
 
   @doc """
   Renders a modal.

@@ -20,5 +20,5 @@ defmodule AccountexWeb.Gettext do
 
   See the [Gettext Docs](https://hexdocs.pm/gettext) for detailed usage.
   """
-  use Gettext
+  use Gettext.Backend, otp_app: :accountex
 end
