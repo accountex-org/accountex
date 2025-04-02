@@ -59,3 +59,41 @@ jobs:
       - name: Run test
         run: mix test --max-failures 1 --trace --warnings-as-errors
 
+  build-push:
+      runs-on: ubuntu-latest
+      needs: ci
+      name: Build Docker image & push to ghcr.io
+      steps:
+        - uses: actions/checkout@v4
+
+        - name: Login to GHCR
+          uses: docker/login-action@v3
+          with:
+            registry: ghcr.io
+            username: ${{ github.repository_owner }}
+            password: ${{ secrets.GH_PAT }}
+
+        - name: Docker meta
+          id: meta
+          uses: docker/metadata-action@v5
+          with:
+            images: |
+              ghcr.io/accountex-org/accountex
+            tags: |
+              type=raw,value=latest,enable={{is_default_branch}}
+              type=ref,event=pr
+              type=sha,format=short
+
+        - name: Parse versions from .tool-versions
+          id: parse-asdf
+          run: ./scripts/versions.sh
+
+        - uses: docker/build-push-action@v5
+          with:
+            context: .
+            tags: ${{ steps.meta.outputs.tags }}
+            labels: ${{ steps.meta.outputs.labels }}
+            push: true
+            build-args: |
+              ELIXIR_VERSION=${{ env.ELIXIR_VERSION }}
+              OTP_VERSION=${{ env.ERLANG_VERSION }}
