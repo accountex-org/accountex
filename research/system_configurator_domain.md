@@ -1,4 +1,4 @@
-Based on the AccountMate 12 Configurator Database Reference Guide, here's a comprehensive Ash domain and resources design for the System Configurator application:
+Based on the Accountex 12 Configurator Database Reference Guide, here's a comprehensive Ash domain and resources design for the System Configurator application:
 
 ## Accountex System Configurator Domain
 

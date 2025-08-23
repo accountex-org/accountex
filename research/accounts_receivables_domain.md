@@ -1,6 +1,85 @@
-I'll analyze the AccountMate AR data dictionary and create an Ash domain structure with semantically correct naming conventions. Let me design the domain and resources based on the document provided.
+I'll analyze the Accountex AR data dictionary and create an Ash domain structure with semantically correct naming conventions. Let me design the domain and resources based on the document provided.
 
 # Accountex Accounts Receivable Domain
+
+## Domain Overview
+
+The Accounts Receivable domain manages customer relationships, invoicing, payments, and collections. This includes customer management, invoice processing, payment applications, credit management, and financial reporting.
+
+## Mermaid Domain Diagram
+
+```mermaid
+erDiagram
+    Customer ||--o{ CustomerAddress : has
+    Customer ||--o{ CustomerContact : has
+    Customer ||--o{ CustomerCreditCard : has
+    Customer ||--o{ CustomerActivity : tracks
+    Customer ||--o{ Invoice : receives
+    Customer ||--o{ Payment : makes
+    Customer ||--o{ RecurringInvoice : has
+    Customer ||--o{ FinanceCharge : accrues
+    Customer ||--o{ OpenCreditAdjustment : receives
+    Customer }o--|| Customer : child_of
+    Customer }o--|| Salesperson : assigned_to
+    Customer }o--|| PaymentTerm : uses
+    Customer }o--|| RevenueCategory : categorized_as
+    Customer }o--|| TaxCode : uses
+    
+    Invoice ||--o{ InvoiceLineItem : contains
+    Invoice ||--o{ PaymentApplication : receives
+    Invoice ||--o{ FinanceCharge : accrues
+    Invoice ||--|| InvoiceRemark : has
+    Invoice }o--|| Customer : billed_to
+    Invoice }o--|| Salesperson : sold_by
+    Invoice }o--|| PaymentTerm : uses
+    Invoice }o--|| FreightCode : uses
+    Invoice }o--|| TaxCode : uses
+    
+    Payment ||--o{ PaymentApplication : applies_to
+    Payment }o--|| Customer : from
+    Payment }o--|| PaymentTerm : uses
+    Payment }o--|| BankDeposit : included_in
+    
+    PaymentApplication }o--|| Payment : from
+    PaymentApplication }o--|| Invoice : applied_to
+    PaymentApplication }o--|| Customer : for
+    
+    RecurringInvoice ||--o{ RecurringInvoiceLineItem : contains
+    RecurringInvoice }o--|| Customer : for
+    RecurringInvoice }o--|| Salesperson : assigned_to
+    RecurringInvoice }o--|| PaymentTerm : uses
+    
+    InvoiceLineItem }o--|| Invoice : part_of
+    InvoiceLineItem }o--|| RevenueCategory : categorized_as
+    
+    RecurringInvoiceLineItem }o--|| RecurringInvoice : part_of
+    RecurringInvoiceLineItem }o--|| RevenueCategory : categorized_as
+    
+    Salesperson ||--o{ Customer : manages
+    Salesperson ||--o{ Invoice : creates
+    Salesperson }o--|| RevenueCategory : default_uses
+    
+    RevenueCategory ||--o{ Customer : default_for
+    RevenueCategory ||--o{ InvoiceLineItem : categorizes
+    RevenueCategory ||--o{ RecurringInvoiceLineItem : categorizes
+    
+    PaymentTerm ||--o{ Customer : default_for
+    PaymentTerm ||--o{ Invoice : applied_to
+    PaymentTerm ||--o{ Payment : used_by
+    PaymentTerm ||--o{ RecurringInvoice : uses
+    
+    FreightCode ||--o{ Invoice : applied_to
+    
+    TaxCode ||--o{ Customer : default_for
+    TaxCode ||--o{ Invoice : applied_to
+    
+    FinanceCharge }o--|| Invoice : charged_on
+    FinanceCharge }o--|| Customer : charged_to
+    
+    BankDeposit ||--o{ Payment : includes
+    
+    OpenCreditAdjustment }o--|| Customer : for
+```
 
 ## Domain Module
 
@@ -850,4 +929,4 @@ Each resource would include:
 - Validations based on business rules
 - Calculations for derived values
 
-This structure provides a clean, maintainable Ash domain that maps to the AccountMate AR system while following Elixir and Ash best practices.
+This structure provides a clean, maintainable Ash domain that maps to the Accountex AR system while following Elixir and Ash best practices.

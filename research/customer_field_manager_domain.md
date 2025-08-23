@@ -1,4 +1,4 @@
-Based on the AccountMate 12 Custom Field Manager Database Reference Guide, I'll create an Ash domain and resources structure for the Accountex system.
+Based on the Accountex 12 Custom Field Manager Database Reference Guide, I'll create an Ash domain and resources structure for the Accountex system.
 
 ## Domain Overview
 

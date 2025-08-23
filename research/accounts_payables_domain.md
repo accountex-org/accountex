@@ -1,5 +1,51 @@
 # Accounts Payable Module Ash Framework Domain Implementation
 
+## Domain Overview
+
+The Accounts Payable domain manages vendor relationships, purchase invoicing, payment processing, and financial compliance. This includes vendor management, invoice processing, check payments, electronic transfers, tax reporting, and recurring payment automation.
+
+## Mermaid Domain Diagram
+
+```mermaid
+erDiagram
+    VendorAccount ||--o{ VendorMailingAddress : has
+    VendorAccount ||--o{ VendorContactPerson : has
+    VendorAccount ||--o{ PurchaseInvoice : receives
+    VendorAccount ||--o{ VendorPaymentCheck : receives
+    VendorAccount ||--o{ TaxForm1099Report : requires
+    VendorAccount ||--o{ RecurringInvoiceTemplate : uses
+    
+    PurchaseInvoice ||--o{ InvoiceGeneralLedgerDistribution : distributed_to
+    PurchaseInvoice ||--o{ CheckInvoiceApplication : paid_by
+    PurchaseInvoice ||--o{ InvoiceFinanceCharge : accrues
+    PurchaseInvoice ||--o{ PurchaseOrderAccrual : matches
+    PurchaseInvoice }o--|| VendorAccount : from
+    
+    VendorPaymentCheck ||--o{ CheckInvoiceApplication : applies_to
+    VendorPaymentCheck ||--|| ElectronicFundsTransfer : processed_as
+    VendorPaymentCheck }o--|| VendorAccount : paid_to
+    
+    CheckInvoiceApplication }o--|| VendorPaymentCheck : from
+    CheckInvoiceApplication }o--|| PurchaseInvoice : applied_to
+    
+    RecurringInvoiceTemplate ||--o{ RecurringInvoiceDistribution : contains
+    RecurringInvoiceTemplate }o--|| VendorAccount : for
+    
+    TaxForm1099Report ||--o{ TaxForm1099Update : updated_by
+    TaxForm1099Report }o--|| VendorAccount : reports_for
+    
+    PurchaseOrderAccrual ||--o{ PurchaseOrderAccrualQuantity : tracks
+    PurchaseOrderAccrual }o--|| PurchaseInvoice : matches_with
+    
+    InvoiceGeneralLedgerDistribution }o--|| PurchaseInvoice : distributes
+    
+    InvoiceFinanceCharge }o--|| PurchaseInvoice : charged_on
+    
+    RecurringInvoiceDistribution }o--|| RecurringInvoiceTemplate : part_of
+    
+    SystemConfiguration ||--o{ VendorAccount : configures
+```
+
 This comprehensive Elixir implementation provides a modern Accounts Payable system using the Ash framework with semantically meaningful names, UUID7 primary keys, and proper relationships.
 
 ## Domain Module Definition

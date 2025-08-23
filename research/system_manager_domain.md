@@ -1,8 +1,65 @@
-# AccountMate System Manager - Ash Domain Specification
+# Accountex System Manager - Ash Domain Specification
 
 ## Domain Overview
 
-The System Manager domain handles core system configuration, user management, security, auditing, and reporting infrastructure for the AccountMate ERP system.
+The System Manager domain handles core system configuration, user management, security, auditing, and reporting infrastructure for the Accountex ERP system.
+
+## Mermaid Domain Diagram
+
+```mermaid
+erDiagram
+    CompanyConfiguration ||--o{ CompanyConfiguration : child_companies
+    CompanyConfiguration ||--o{ AuditTrailConfiguration : configures
+    CompanyConfiguration ||--o{ UserGroupAccessRight : grants
+    CompanyConfiguration ||--o{ SystemConfiguration : has
+    
+    SystemUser ||--o{ PasswordHistory : tracks
+    SystemUser ||--o{ LoginSession : creates
+    SystemUser ||--o{ UserAccessRight : has
+    SystemUser ||--o{ AuditActivityLog : generates
+    SystemUser }o--|| UserGroup : belongs_to
+    SystemUser }o--|| PasswordPolicy : follows
+    
+    UserGroup ||--o{ SystemUser : contains
+    UserGroup ||--o{ UserGroupAccessRight : has
+    
+    UserGroupAccessRight }o--|| UserGroup : granted_to
+    UserGroupAccessRight }o--|| CompanyConfiguration : for_company
+    
+    UserAccessRight }o--|| SystemUser : granted_to
+    
+    PasswordPolicy ||--o{ SystemUser : applies_to
+    PasswordPolicy ||--o{ PasswordHistory : validates
+    
+    AuditTrailConfiguration }o--|| CompanyConfiguration : for_company
+    AuditTrailConfiguration ||--o{ AuditTrailFunction : defines
+    AuditTrailConfiguration ||--o{ AuditTrailFieldMapping : maps
+    
+    AuditActivityLog }o--|| SystemUser : created_by
+    AuditActivityLog }o--|| ActivityDefinition : defines_activity
+    
+    ReportControl ||--o{ ReportSetting : has
+    ReportControl ||--o{ ReportMacro : uses
+    ReportControl ||--o{ ReportFilterCriteria : filters_by
+    ReportControl ||--o{ ReportSortingOption : sorts_by
+    ReportControl ||--o{ ReportExportSetting : exports_with
+    
+    ModuleRegistration ||--o{ MenuOption : provides
+    ModuleRegistration ||--o{ SystemInformation : describes
+    
+    MenuOption ||--o{ ShortcutPane : appears_in
+    MenuOption ||--o{ SearchOption : enables
+    MenuOption ||--o{ LookupCriteria : uses
+    
+    GridSetting }o--|| SystemUser : customized_by
+    
+    LanguageSelection ||--o{ TranslationEntry : contains
+    LanguageSelection }o--|| SystemUser : preferred_by
+    
+    AccountCategory ||--o{ TransactionType : categorizes
+    
+    ExtendedSecurityFeature ||--o{ SystemUser : protects
+```
 
 ## Domain Module
 
@@ -401,32 +458,6 @@ defmodule Accountex.SystemManager.ReportControl do
 end
 ```
 
-## Domain Diagram
-
-```mermaid
-erDiagram
-    CompanyConfiguration ||--o{ AuditTrailConfiguration : has
-    CompanyConfiguration ||--o{ UserGroupAccessRight : has
-    CompanyConfiguration ||--o| CompanyConfiguration : "parent"
-    
-    SystemUser ||--o{ PasswordHistory : has
-    SystemUser ||--o{ LoginSession : has
-    SystemUser ||--o{ UserAccessRight : has
-    SystemUser ||--o{ AuditActivityLog : creates
-    SystemUser }o--|| UserGroup : "belongs to"
-    
-    UserGroup ||--o{ UserGroupAccessRight : has
-    UserGroup ||--o{ SystemUser : contains
-    
-    ReportControl ||--o{ ReportSetting : has
-    ReportControl ||--o{ ReportMacro : has
-    ReportControl ||--o{ ReportFilterCriteria : has
-    ReportControl ||--o{ ReportSortingOption : has
-    
-    ModuleRegistration ||--o{ MenuOption : has
-    
-    LanguageSelection ||--o{ TranslationEntry : has
-```
 
 ## Code Interfaces
 
