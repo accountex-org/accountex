@@ -1535,3 +1535,1314 @@ end
 - Field mapping configuration
 - Validation and error reporting
 - Batch processing capabilities
+
+# Accounts Receivables Business Logic - Part 3
+
+## Master Records Management (Continued)
+
+### 8. Inventory Type Management
+
+#### 8.1 Commands
+
+```elixir
+defmodule AccountsReceivables.Commands.CreateInventoryType do
+  use Ash.Resource,
+    data_layer: :embedded,
+    extensions: [AshCommanded.Extension]
+
+  attributes do
+    attribute :inventory_type_id, :uuid, allow_nil?: false
+    attribute :code, :string, allow_nil?: false
+    attribute :description, :string, allow_nil?: false
+    attribute :default_item_desc, :string
+    attribute :item_class, :string
+    attribute :product_line, :string
+    attribute :unit_of_measure, :string
+    
+    # Settings
+    attribute :cost_method, :atom, 
+      constraints: [one_of: [:average, :fifo, :lifo, :specific_id]]
+    attribute :quantity_decimals, :integer, default: 2
+    attribute :unit_price, :decimal
+    attribute :standard_cost, :decimal
+    attribute :return_cost, :decimal
+    attribute :repair_charge, :decimal
+    attribute :min_restock_amount, :decimal
+    attribute :restocking_percentage, :decimal
+    
+    # Revenue tracking
+    attribute :revenue_code_id, :uuid
+    attribute :inventory_gl_account_id, :uuid
+    attribute :in_transit_inventory_gl_account_id, :uuid
+    
+    # Lot control settings
+    attribute :use_lot_control, :boolean, default: false
+    attribute :print_lot_on_invoice, :boolean, default: false
+    
+    # Kit settings
+    attribute :is_kit_item, :boolean, default: false
+    attribute :require_prebuild, :boolean, default: false
+    attribute :use_kit_number, :boolean, default: false
+    attribute :customizable, :boolean, default: false
+    
+    # General settings
+    attribute :update_on_hand, :boolean, default: true
+    attribute :check_on_hand, :boolean, default: true
+    attribute :allow_negative_qty_on_hand, :boolean, default: false
+    attribute :allow_negative_price, :boolean, default: false
+    attribute :allow_negative_qty_on_invoice, :boolean, default: false
+    attribute :allow_discarding, :boolean, default: false
+    attribute :allow_repairing, :boolean, default: false
+    attribute :print_serial_on_invoice, :boolean, default: false
+    attribute :taxable, :boolean, default: true
+    
+    # Overwrite permissions
+    attribute :allow_overwrite_description, :boolean, default: false
+    attribute :allow_overwrite_price, :boolean, default: false
+    attribute :allow_overwrite_discount, :boolean, default: false
+    attribute :allow_overwrite_tax_status, :boolean, default: false
+    attribute :allow_overwrite_weight, :boolean, default: false
+    attribute :allow_overwrite_revenue_code, :boolean, default: false
+    attribute :allow_overwrite_commission, :boolean, default: false
+    
+    # Revenue Amortization settings
+    attribute :amortize, :boolean, default: false
+    attribute :amortization_method, :atom
+    attribute :recurring_cycle, :atom
+    attribute :number_of_cycles, :integer
+    
+    # GL Accounts
+    attribute :contract_costs_gl_account_id, :uuid
+    attribute :contract_obligations_gl_account_id, :uuid
+    attribute :contract_discounts_gl_account_id, :uuid
+  end
+end
+```
+
+#### 8.2 Events
+
+```elixir
+defmodule AccountsReceivables.Events.InventoryTypeCreated do
+  use Ash.Resource,
+    data_layer: :embedded
+    
+  attributes do
+    # Include all attributes from CreateInventoryType command
+    # ... (same as command attributes)
+  end
+end
+```
+
+#### 8.3 Aggregates
+
+```elixir
+defmodule AccountsReceivables.Aggregates.InventoryType do
+  use Ash.Resource,
+    data_layer: AshPostgres.DataLayer,
+    extensions: [AshCommanded.Aggregate]
+
+  postgres do
+    table "inventory_types"
+    repo AccountsReceivables.Repo
+  end
+
+  attributes do
+    uuid_primary_key :id
+    
+    attribute :code, :string, allow_nil?: false
+    attribute :description, :string, allow_nil?: false
+    attribute :settings, :map, default: %{}
+    attribute :lot_control_settings, :map, default: %{}
+    attribute :kit_settings, :map, default: %{}
+    attribute :gl_accounts, :map, default: %{}
+    attribute :permissions, :map, default: %{}
+    
+    timestamps()
+  end
+  
+  relationships do
+    has_many :inventory_items, AccountsReceivables.Aggregates.InventoryItem
+  end
+
+  calculations do
+    calculate :in_use, :boolean do
+      expr(count(inventory_items) > 0)
+    end
+  end
+end
+```
+
+### 9. Revenue Code Management
+
+#### 9.1 Commands
+
+```elixir
+defmodule AccountsReceivables.Commands.CreateRevenueCode do
+  use Ash.Resource,
+    data_layer: :embedded,
+    extensions: [AshCommanded.Extension]
+
+  attributes do
+    attribute :revenue_code_id, :uuid, allow_nil?: false
+    attribute :code, :string, allow_nil?: false
+    attribute :description, :string, allow_nil?: false
+    
+    # GL Account mappings
+    attribute :sales_revenue_gl_account_id, :uuid, allow_nil?: false
+    attribute :sales_returns_gl_account_id, :uuid, allow_nil?: false
+    attribute :sales_discounts_gl_account_id, :uuid, allow_nil?: false
+    attribute :cost_of_goods_sold_gl_account_id, :uuid, allow_nil?: false
+  end
+end
+```
+
+#### 9.2 Aggregates
+
+```elixir
+defmodule AccountsReceivables.Aggregates.RevenueCode do
+  use Ash.Resource,
+    data_layer: AshPostgres.DataLayer,
+    extensions: [AshCommanded.Aggregate]
+
+  postgres do
+    table "revenue_codes"
+    repo AccountsReceivables.Repo
+  end
+
+  attributes do
+    uuid_primary_key :id
+    
+    attribute :code, :string, allow_nil?: false
+    attribute :description, :string, allow_nil?: false
+    attribute :gl_accounts, :map, allow_nil?: false
+    
+    timestamps()
+  end
+
+  calculations do
+    calculate :gl_account_names, :map do
+      # Would fetch GL account names from GL module
+    end
+  end
+end
+```
+
+### 10. Freight Code Management
+
+#### 10.1 Commands
+
+```elixir
+defmodule AccountsReceivables.Commands.CreateFreightCode do
+  use Ash.Resource,
+    data_layer: :embedded,
+    extensions: [AshCommanded.Extension]
+
+  attributes do
+    attribute :freight_code_id, :uuid, allow_nil?: false
+    attribute :code, :string, allow_nil?: false
+    attribute :description, :string, allow_nil?: false
+    attribute :min_freight_charge, :decimal
+    attribute :taxable, :boolean, default: false
+    attribute :freight_revenue_gl_account_id, :uuid, allow_nil?: false
+    
+    # Weight-based pricing
+    attribute :calculate_by_weight, :boolean, default: false
+    attribute :weight_brackets, {:array, :map}, default: []
+    # Each bracket: %{weight_not_over: decimal, freight_charge: decimal}
+  end
+end
+```
+
+### 11. Salesperson Management
+
+#### 11.1 Commands
+
+```elixir
+defmodule AccountsReceivables.Commands.CreateSalesperson do
+  use Ash.Resource,
+    data_layer: :embedded,
+    extensions: [AshCommanded.Extension]
+
+  attributes do
+    attribute :salesperson_id, :uuid, allow_nil?: false
+    attribute :code, :string, allow_nil?: false
+    attribute :name, :string, allow_nil?: false
+    attribute :title, :string
+    attribute :address, :map
+    attribute :phone, :string
+    attribute :status, :atom, default: :active
+    attribute :revenue_code_id, :uuid
+    attribute :created_date, :date
+  end
+end
+```
+
+#### 11.2 Aggregates
+
+```elixir
+defmodule AccountsReceivables.Aggregates.Salesperson do
+  use Ash.Resource,
+    data_layer: AshPostgres.DataLayer,
+    extensions: [AshCommanded.Aggregate]
+
+  postgres do
+    table "salespersons"
+    repo AccountsReceivables.Repo
+  end
+
+  attributes do
+    uuid_primary_key :id
+    
+    attribute :code, :string, allow_nil?: false
+    attribute :name, :string, allow_nil?: false
+    attribute :contact_info, :map, default: %{}
+    attribute :status, :atom, default: :active
+    attribute :revenue_code_id, :uuid
+    attribute :notes, :text
+    
+    timestamps()
+  end
+
+  relationships do
+    has_many :sales_transactions, AccountsReceivables.Aggregates.SalesTransaction
+  end
+
+  calculations do
+    calculate :total_sales, :decimal do
+      # Aggregate sales from related transactions
+    end
+    
+    calculate :monthly_sales, :map do
+      # Monthly breakdown of sales
+    end
+  end
+end
+```
+
+### 12. Sales Tax Management
+
+#### 12.1 Tax Entity Commands
+
+```elixir
+defmodule AccountsReceivables.Commands.CreateTaxEntity do
+  use Ash.Resource,
+    data_layer: :embedded,
+    extensions: [AshCommanded.Extension]
+
+  attributes do
+    attribute :tax_entity_id, :uuid, allow_nil?: false
+    attribute :code, :string, allow_nil?: false
+    attribute :description, :string, allow_nil?: false
+    attribute :status, :atom, default: :active
+    
+    attribute :sales_tax_payable_gl_account_id, :uuid, allow_nil?: false
+    attribute :sales_tax_costs_gl_account_id, :uuid, allow_nil?: false
+    
+    attribute :tax_rate, :decimal, allow_nil?: false
+    attribute :min_taxable_amount, :decimal, default: 0
+    attribute :exclude_min_in_computation, :boolean, default: false
+    attribute :max_taxable_amount, :decimal
+    
+    attribute :min_tax_amount, :decimal, default: 0
+    attribute :max_tax_amount, :decimal
+    
+    attribute :rounding_method, :atom, 
+      constraints: [one_of: [:higher, :nearest, :lower]]
+    attribute :rounding_base, :decimal
+  end
+end
+```
+
+#### 12.2 Tax Code Commands
+
+```elixir
+defmodule AccountsReceivables.Commands.CreateTaxCode do
+  use Ash.Resource,
+    data_layer: :embedded,
+    extensions: [AshCommanded.Extension]
+
+  attributes do
+    attribute :tax_code_id, :uuid, allow_nil?: false
+    attribute :code, :string, allow_nil?: false
+    attribute :description, :string, allow_nil?: false
+    
+    # Up to 3 tax entities
+    attribute :tax_entity_1_id, :uuid
+    attribute :tax_entity_2_id, :uuid
+    attribute :tax_entity_3_id, :uuid
+  end
+end
+```
+
+#### 12.3 Tax Aggregates
+
+```elixir
+defmodule AccountsReceivables.Aggregates.TaxCode do
+  use Ash.Resource,
+    data_layer: AshPostgres.DataLayer,
+    extensions: [AshCommanded.Aggregate]
+
+  postgres do
+    table "tax_codes"
+    repo AccountsReceivables.Repo
+  end
+
+  attributes do
+    uuid_primary_key :id
+    
+    attribute :code, :string, allow_nil?: false
+    attribute :description, :string, allow_nil?: false
+    attribute :tax_entities, {:array, :uuid}, default: []
+    
+    timestamps()
+  end
+
+  calculations do
+    calculate :effective_rate, :decimal do
+      # Calculate combined rate from all entities
+    end
+    
+    calculate :tax_details, :map do
+      # Detailed breakdown of tax calculation rules
+    end
+  end
+end
+```
+
+### 13. Payment Code Management
+
+#### 13.1 Commands
+
+```elixir
+defmodule AccountsReceivables.Commands.CreatePayCode do
+  use Ash.Resource,
+    data_layer: :embedded,
+    extensions: [AshCommanded.Extension]
+
+  attributes do
+    attribute :pay_code_id, :uuid, allow_nil?: false
+    attribute :code, :string, allow_nil?: false
+    attribute :description, :string, allow_nil?: false
+    attribute :bank_id, :uuid
+    
+    attribute :type, :atom, 
+      constraints: [one_of: [:cash, :check, :credit_card, :cod, :terms, :ach, :other]]
+    
+    attribute :use_in_sales, :boolean, default: true
+    attribute :use_in_purchases, :boolean, default: true
+    attribute :apply_payment_automatically, :boolean, default: false
+    attribute :eligible_for_finance_charges, :boolean, default: true
+    
+    # Terms settings (when type = :terms)
+    attribute :discount_percentage, :decimal
+    attribute :discount_days_type, :atom, 
+      constraints: [one_of: [:from_invoice_date, :date_table]]
+    attribute :discount_days, :integer
+    attribute :net_days, :integer
+    attribute :date_table, {:array, :map}, default: []
+    # Date table entries: %{start_date: integer, end_date: integer, 
+    #                       discount_date: integer, due_date: integer, 
+    #                       months_to_add: integer}
+  end
+end
+```
+
+### 14. System Remark Management
+
+#### 14.1 Commands
+
+```elixir
+defmodule AccountsReceivables.Commands.CreateSystemRemark do
+  use Ash.Resource,
+    data_layer: :embedded,
+    extensions: [AshCommanded.Extension]
+
+  attributes do
+    attribute :remark_id, :uuid, allow_nil?: false
+    attribute :code, :string, allow_nil?: false
+    attribute :description, :string, allow_nil?: false
+    attribute :remark_text, :text, allow_nil?: false
+    attribute :applicable_to, {:array, :atom}, 
+      default: [:invoices, :sales_orders, :quotes]
+  end
+end
+```
+
+### 15. Bank Account Management
+
+#### 15.1 Commands
+
+```elixir
+defmodule AccountsReceivables.Commands.CreateBankAccount do
+  use Ash.Resource,
+    data_layer: :embedded,
+    extensions: [AshCommanded.Extension]
+
+  attributes do
+    attribute :bank_account_id, :uuid, allow_nil?: false
+    attribute :bank_number, :string, allow_nil?: false
+    attribute :bank_name, :string, allow_nil?: false
+    attribute :account_description, :string
+    attribute :account_number, :string, allow_nil?: false
+    attribute :routing_number, :string
+    attribute :gl_account_id, :uuid, allow_nil?: false
+    attribute :currency_code, :string, default: "USD"
+    
+    attribute :account_type, :atom, 
+      constraints: [one_of: [:checking, :savings, :other]]
+    attribute :check_format, :atom, 
+      constraints: [one_of: [:standard_us, :canadian]]
+    
+    # Check numbering
+    attribute :use_system_generated_deposit_number, :boolean, default: true
+    attribute :checks_share_numbering, :boolean, default: false
+    attribute :next_deposit_number, :integer, default: 1
+    attribute :next_computer_check_number, :integer, default: 1
+    attribute :next_handwritten_check_number, :integer, default: 1
+    
+    # Limits
+    attribute :max_computer_check_amount, :decimal
+    attribute :max_handwritten_check_amount, :decimal
+    
+    # Module availability
+    attribute :available_in_accounts_payable, :boolean, default: true
+    attribute :available_in_payroll, :boolean, default: false
+    attribute :available_in_sales_and_receivables, :boolean, default: true
+    
+    # Reconciliation
+    attribute :previous_statement_date, :date
+    attribute :previous_statement_balance, :decimal, default: 0
+  end
+end
+```
+
+#### 15.2 Bank Account Aggregates
+
+```elixir
+defmodule AccountsReceivables.Aggregates.BankAccount do
+  use Ash.Resource,
+    data_layer: AshPostgres.DataLayer,
+    extensions: [AshCommanded.Aggregate]
+
+  postgres do
+    table "bank_accounts"
+    repo AccountsReceivables.Repo
+  end
+
+  attributes do
+    uuid_primary_key :id
+    
+    attribute :bank_number, :string, allow_nil?: false
+    attribute :bank_name, :string, allow_nil?: false
+    attribute :account_info, :map, allow_nil?: false
+    attribute :check_settings, :map, default: %{}
+    attribute :reconciliation_info, :map, default: %{}
+    attribute :electronic_payment_settings, :map
+    attribute :positive_pay_settings, :map
+    
+    timestamps()
+  end
+
+  relationships do
+    has_many :deposits, AccountsReceivables.Aggregates.BankDeposit
+    has_many :receipts, AccountsReceivables.Aggregates.Receipt
+  end
+
+  calculations do
+    calculate :current_balance, :decimal do
+      # Calculate from transactions
+    end
+    
+    calculate :unreconciled_amount, :decimal do
+      # Calculate unreconciled transactions
+    end
+  end
+end
+```
+
+### 16. Multi-Currency Support
+
+#### 16.1 Currency Code Commands
+
+```elixir
+defmodule AccountsReceivables.Commands.CreateCurrencyCode do
+  use Ash.Resource,
+    data_layer: :embedded,
+    extensions: [AshCommanded.Extension]
+
+  attributes do
+    attribute :currency_code_id, :uuid, allow_nil?: false
+    attribute :code, :string, allow_nil?: false
+    attribute :symbol, :string, allow_nil?: false
+    attribute :description, :string, allow_nil?: false
+    
+    attribute :exchange_method, :atom, 
+      constraints: [one_of: [:home_to_foreign, :foreign_to_home]]
+    attribute :exchange_rate, :decimal, allow_nil?: false
+    attribute :exchange_rate_date, :date, allow_nil?: false
+    
+    attribute :exchange_gain_loss_gl_account_id, :uuid
+  end
+end
+
+defmodule AccountsReceivables.Commands.UpdateExchangeRate do
+  use Ash.Resource,
+    data_layer: :embedded,
+    extensions: [AshCommanded.Extension]
+
+  attributes do
+    attribute :currency_code_id, :uuid, allow_nil?: false
+    attribute :new_exchange_rate, :decimal, allow_nil?: false
+    attribute :effective_date, :date, allow_nil?: false
+  end
+end
+```
+
+### 17. Activity Management
+
+#### 17.1 Activity Type Commands
+
+```elixir
+defmodule AccountsReceivables.Commands.CreateActivityType do
+  use Ash.Resource,
+    data_layer: :embedded,
+    extensions: [AshCommanded.Extension]
+
+  attributes do
+    attribute :activity_type_id, :uuid, allow_nil?: false
+    attribute :code, :string, allow_nil?: false
+    attribute :description, :string, allow_nil?: false
+    
+    attribute :status_options, {:array, :map}, default: []
+    # Each status: %{sequence: integer, status: string, description: string}
+    
+    attribute :access_rights, {:array, :map}, default: []
+    # Each right: %{user_or_group: string, can_view: boolean, can_update: boolean}
+  end
+end
+```
+
+### 18. Inventory Pricing
+
+#### 18.1 Basic Price Commands
+
+```elixir
+defmodule AccountsReceivables.Commands.SetInventoryBasicPrice do
+  use Ash.Resource,
+    data_layer: :embedded,
+    extensions: [AshCommanded.Extension]
+
+  attributes do
+    attribute :inventory_item_id, :uuid, allow_nil?: false
+    attribute :price_id, :uuid, allow_nil?: false
+    
+    attribute :unit_of_measure, :string
+    attribute :specification_code, :string
+    attribute :unit_price, :decimal, allow_nil?: false
+    attribute :effective_date, :date
+    attribute :expiry_date, :date
+  end
+end
+```
+
+#### 18.2 Multi-Level Price Commands
+
+```elixir
+defmodule AccountsReceivables.Commands.SetInventoryMultiLevelPrice do
+  use Ash.Resource,
+    data_layer: :embedded,
+    extensions: [AshCommanded.Extension]
+
+  attributes do
+    attribute :inventory_item_id, :uuid, allow_nil?: false
+    attribute :price_level_id, :uuid, allow_nil?: false
+    
+    attribute :price_code, :string, allow_nil?: false
+    attribute :quantity_breaks, {:array, :map}, default: []
+    # Each break: %{min_quantity: decimal, max_quantity: decimal, 
+    #               unit_price: decimal, discount_percentage: decimal}
+  end
+end
+```
+
+## Process Managers
+
+### Master Data Process Manager
+
+```elixir
+defmodule AccountsReceivables.ProcessManagers.MasterDataProcessManager do
+  use Commanded.ProcessManagers.ProcessManager,
+    application: AccountsReceivables.Commanded.Application,
+    name: "MasterDataProcessManager"
+
+  @derive Jason.Encoder
+  defstruct [
+    :inventory_types,
+    :revenue_codes,
+    :tax_codes,
+    :pay_codes,
+    :bank_accounts,
+    :currency_codes,
+    :validation_errors
+  ]
+
+  def interested?(%InventoryTypeCreated{inventory_type_id: id}), 
+    do: {:start, id}
+  def interested?(%RevenueCodeCreated{revenue_code_id: id}), 
+    do: {:start, id}
+  def interested?(%TaxCodeCreated{tax_code_id: id}), 
+    do: {:start, id}
+  def interested?(%BankAccountCreated{bank_account_id: id}), 
+    do: {:start, id}
+  def interested?(_event), do: false
+
+  def handle(%__MODULE__{} = state, %InventoryTypeCreated{} = event) do
+    # Validate relationships (revenue code, GL accounts)
+    # Ensure cost method cannot be changed after creation
+    # Set up default warehouse assignments
+    
+    commands = [
+      %ValidateInventoryTypeRelationships{
+        inventory_type_id: event.inventory_type_id,
+        revenue_code_id: event.revenue_code_id,
+        gl_account_ids: extract_gl_accounts(event)
+      }
+    ]
+    
+    {commands, %{state | inventory_types: Map.put(state.inventory_types || %{}, 
+                                                   event.inventory_type_id, 
+                                                   event)}}
+  end
+
+  def handle(%__MODULE__{} = state, %TaxCodeCreated{} = event) do
+    # Validate tax entities exist
+    # Calculate combined tax rate
+    # Update customer default tax codes if applicable
+    
+    commands = [
+      %ValidateTaxEntities{
+        tax_code_id: event.tax_code_id,
+        entity_ids: [event.tax_entity_1_id, event.tax_entity_2_id, event.tax_entity_3_id]
+      }
+    ]
+    
+    {commands, %{state | tax_codes: Map.put(state.tax_codes || %{}, 
+                                            event.tax_code_id, 
+                                            event)}}
+  end
+
+  def handle(%__MODULE__{} = state, %BankAccountCreated{} = event) do
+    # Validate GL account
+    # Set up check printing configuration
+    # Initialize reconciliation state
+    
+    commands = [
+      %InitializeBankReconciliation{
+        bank_account_id: event.bank_account_id,
+        previous_balance: event.previous_statement_balance || Decimal.new(0),
+        previous_date: event.previous_statement_date
+      }
+    ]
+    
+    {commands, %{state | bank_accounts: Map.put(state.bank_accounts || %{}, 
+                                                event.bank_account_id, 
+                                                event)}}
+  end
+
+  defp extract_gl_accounts(event) do
+    [
+      event.inventory_gl_account_id,
+      event.in_transit_inventory_gl_account_id,
+      event.contract_costs_gl_account_id,
+      event.contract_obligations_gl_account_id,
+      event.contract_discounts_gl_account_id
+    ]
+    |> Enum.reject(&is_nil/1)
+  end
+end
+```
+
+### Exchange Rate Process Manager
+
+```elixir
+defmodule AccountsReceivables.ProcessManagers.ExchangeRateProcessManager do
+  use Commanded.ProcessManagers.ProcessManager,
+    application: AccountsReceivables.Commanded.Application,
+    name: "ExchangeRateProcessManager"
+
+  @derive Jason.Encoder
+  defstruct [
+    :currency_codes,
+    :pending_transactions,
+    :rate_history
+  ]
+
+  def interested?(%CurrencyCodeCreated{currency_code_id: id}), 
+    do: {:start, id}
+  def interested?(%ExchangeRateUpdated{currency_code_id: id}), 
+    do: {:continue, id}
+  def interested?(_event), do: false
+
+  def handle(%__MODULE__{} = state, %ExchangeRateUpdated{} = event) do
+    # Update all pending transactions with new rate if configured
+    # Calculate exchange gains/losses
+    # Post to GL if required
+    
+    affected_transactions = find_affected_transactions(state, event.currency_code_id)
+    
+    commands = Enum.map(affected_transactions, fn transaction ->
+      %RecalculateForeignCurrencyAmount{
+        transaction_id: transaction.id,
+        old_rate: transaction.exchange_rate,
+        new_rate: event.new_exchange_rate,
+        effective_date: event.effective_date
+      }
+    end)
+    
+    updated_history = Map.update(
+      state.rate_history || %{},
+      event.currency_code_id,
+      [event],
+      &([event | &1])
+    )
+    
+    {commands, %{state | rate_history: updated_history}}
+  end
+
+  defp find_affected_transactions(state, currency_code_id) do
+    # Find open invoices and pending receipts in this currency
+    Map.get(state.pending_transactions || %{}, currency_code_id, [])
+  end
+end
+```
+
+## Inter-Module Communication
+
+### Events Published to Other Modules
+
+```elixir
+defmodule AccountsReceivables.Events.ForGeneralLedger do
+  @moduledoc """
+  Events that should be consumed by the General Ledger module
+  """
+
+  defmodule GLAccountRequired do
+    use Ash.Resource, data_layer: :embedded
+    
+    attributes do
+      attribute :requesting_module, :atom, default: :accounts_receivables
+      attribute :entity_type, :atom  # :revenue_code, :tax_entity, :bank_account
+      attribute :entity_id, :uuid
+      attribute :gl_account_type, :atom  # :revenue, :tax_payable, :cash, etc.
+      attribute :required_by, :datetime
+    end
+  end
+
+  defmodule ExchangeGainLossPosted do
+    use Ash.Resource, data_layer: :embedded
+    
+    attributes do
+      attribute :currency_code, :string
+      attribute :transaction_id, :uuid
+      attribute :gain_loss_amount, :decimal
+      attribute :gl_account_id, :uuid
+      attribute :posting_date, :date
+    end
+  end
+end
+```
+
+### Event Subscriptions from Other Modules
+
+```elixir
+defmodule AccountsReceivables.Subscriptions.FromInventory do
+  @moduledoc """
+  Handle events from the Inventory module
+  """
+
+  def handle_inventory_item_created(event) do
+    # Update inventory type usage
+    # Set up default pricing
+    # Initialize available quantity tracking
+  end
+
+  def handle_inventory_cost_updated(event) do
+    # Update standard costs
+    # Recalculate margins on open quotes
+  end
+
+  def handle_lot_number_assigned(event) do
+    # Track lot numbers for invoicing
+    # Update lot control settings
+  end
+end
+```
+
+## Validation and Business Rules
+
+### Master Data Validators
+
+```elixir
+defmodule AccountsReceivables.Validators.MasterDataValidator do
+  @moduledoc """
+  Validates master data consistency and relationships
+  """
+
+  def validate_inventory_type_deletion(inventory_type_id) do
+    # Check if type is used by any inventory items
+    # Check for open transactions
+    # Return {:error, reason} if cannot delete
+  end
+
+  def validate_revenue_code_change(revenue_code_id, changes) do
+    # Ensure GL accounts are valid
+    # Check impact on existing transactions
+    # Validate tracking method consistency
+  end
+
+  def validate_tax_code_configuration(tax_code) do
+    # Ensure tax entities exist and are active
+    # Validate rate calculations
+    # Check for circular dependencies
+  end
+
+  def validate_bank_account_currency_change(bank_account_id, new_currency) do
+    # This should always fail - currency cannot be changed after creation
+    {:error, :currency_change_not_allowed}
+  end
+
+  def validate_exchange_rate(currency_code, new_rate, method) do
+    # Ensure rate is positive
+    # Check rate reasonableness (e.g., not more than 50% change)
+    # Validate based on exchange method
+  end
+end
+```
+
+## Access Control
+
+### Master Data Permissions
+
+```elixir
+defmodule AccountsReceivables.Policies.MasterDataPolicy do
+  use Ash.Policy.Authorizer
+
+  policies do
+    policy action(:create_inventory_type) do
+      authorize_if role: [:admin, :inventory_manager]
+    end
+
+    policy action(:update_tax_code) do
+      authorize_if role: [:admin, :finance_manager]
+      forbid_if expr(is_system_tax_code == true)
+    end
+
+    policy action(:delete_revenue_code) do
+      authorize_if role: :admin
+      forbid_if expr(in_use == true)
+    end
+
+    policy action(:update_exchange_rate) do
+      authorize_if role: [:admin, :finance_manager]
+      forbid_if expr(is_home_currency == true)
+    end
+
+    policy action(:manage_bank_accounts) do
+      authorize_if role: [:admin, :treasury_manager]
+    end
+  end
+end
+```
+
+## Reporting Queries
+
+### Master Data Reports
+
+```elixir
+defmodule AccountsReceivables.Queries.MasterDataQueries do
+  import Ecto.Query
+
+  def list_active_inventory_types(filters \\ %{}) do
+    InventoryType
+    |> where([t], t.status == :active)
+    |> filter_by_class(filters[:item_class])
+    |> filter_by_product_line(filters[:product_line])
+    |> preload([:revenue_code, :inventory_items])
+  end
+
+  def tax_code_summary(tax_code_id) do
+    TaxCode
+    |> where([tc], tc.id == ^tax_code_id)
+    |> join(:left, [tc], te1 in TaxEntity, on: tc.tax_entity_1_id == te1.id)
+    |> join(:left, [tc], te2 in TaxEntity, on: tc.tax_entity_2_id == te2.id)
+    |> join(:left, [tc], te3 in TaxEntity, on: tc.tax_entity_3_id == te3.id)
+    |> select([tc, te1, te2, te3], %{
+      code: tc.code,
+      description: tc.description,
+      combined_rate: fragment("COALESCE(?, 0) + COALESCE(?, 0) + COALESCE(?, 0)",
+                              te1.tax_rate, te2.tax_rate, te3.tax_rate),
+      entities: [te1, te2, te3]
+    })
+  end
+
+  def bank_reconciliation_status(bank_account_id) do
+    BankAccount
+    |> where([ba], ba.id == ^bank_account_id)
+    |> join(:left, [ba], d in assoc(ba, :deposits))
+    |> join(:left, [ba], r in assoc(ba, :receipts))
+    |> select([ba, d, r], %{
+      account: ba,
+      current_balance: ba.current_balance,
+      unreconciled_deposits: fragment("COUNT(?) FILTER (WHERE ? IS NULL)", 
+                                      d.id, d.reconciled_date),
+      unreconciled_receipts: fragment("COUNT(?) FILTER (WHERE ? IS NULL)", 
+                                      r.id, r.reconciled_date),
+      unreconciled_amount: ba.unreconciled_amount
+    })
+  end
+
+  def exchange_rate_history(currency_code, date_range) do
+    ExchangeRateHistory
+    |> where([erh], erh.currency_code == ^currency_code)
+    |> where([erh], erh.effective_date >= ^date_range.start_date)
+    |> where([erh], erh.effective_date <= ^date_range.end_date)
+    |> order_by([erh], desc: erh.effective_date)
+  end
+end
+```
+
+## Configuration Management
+
+### Module Settings
+
+```elixir
+defmodule AccountsReceivables.Config do
+  @moduledoc """
+  Configuration settings for Accounts Receivables module
+  """
+
+  def inventory_type_defaults do
+    %{
+      cost_method: :average,
+      quantity_decimals: 2,
+      update_on_hand: true,
+      check_on_hand: true,
+      taxable: true,
+      allow_negative_qty_on_hand: false
+    }
+  end
+
+  def tax_calculation_settings do
+    %{
+      rounding_method: :nearest,
+      rounding_base: Decimal.new("0.01"),
+      compound_taxes: false,
+      tax_on_shipping: true,
+      tax_on_freight: false
+    }
+  end
+
+  def bank_account_defaults do
+    %{
+      account_type: :checking,
+      check_format: :standard_us,
+      use_system_generated_deposit_number: true,
+      checks_share_numbering: false,
+      next_deposit_number: 1,
+      next_computer_check_number: 1001,
+      next_handwritten_check_number: 5001
+    }
+  end
+
+  def multi_currency_settings do
+    %{
+      home_currency: "USD",
+      exchange_method: :home_to_foreign,
+      auto_update_rates: false,
+      rate_variance_threshold: Decimal.new("0.50"), # 50% change triggers warning
+      require_approval_for_rate_changes: true
+    }
+  end
+end
+```
+
+## Integration Points
+
+### With General Ledger Module
+
+- All GL account references must be validated
+- Exchange gains/losses posted automatically
+- Tax liability accounts updated
+- Bank reconciliation entries synchronized
+
+### With Inventory Module
+
+- Inventory type assignments
+- Cost method enforcement
+- Lot control integration
+- Kit configuration support
+
+### With Sales Order Module
+
+- Revenue code usage
+- Tax code application
+- Freight calculations
+- Salesperson assignments
+
+### With Banking Module
+
+- Bank account management
+- Check printing configuration
+- Electronic payment setup
+- Positive pay file generation
+
+## End of Part 3
+
+This completes Part 3 of the Accounts Receivables business logic implementation, covering master records management, multi-currency support, tax configuration, and integration points with other modules.
+
+# Accountex Accounts Receivables Business Logic Part 4
+
+## Design specification for period-end operations
+
+Based on research of event-sourced patterns using Commanded and AshCommanded frameworks, this specification presents Part 4 of the Accountex Accounts Receivables business logic, covering Period-End Closing, Set Up Parameters, Update GL Account Balances, and Multi-Currency Revaluation features.
+
+## Architecture Foundation
+
+The design follows **CQRS/ES architecture patterns** established in Elixir applications using Commanded, implementing strict command/query separation with an append-only event store backed by PostgreSQL. Each business operation processes through aggregates that maintain consistency boundaries, emit domain events, and use process managers for complex workflow orchestration.
+
+## Feature 1: Period-End Closing
+
+### Domain Model and Aggregates
+
+The period-end closing process centers around two main aggregates:
+
+- **AccountingPeriod**: Manages the lifecycle and state transitions of accounting periods
+- **ARClosingProcess**: Orchestrates the complete period-end closing workflow
+
+### Command Structure
+
+```elixir
+defmodule Accountex.AccountsReceivables.Commands.InitiatePeriodClose do
+  @derive Jason.Encoder
+  defstruct [:period_id, :closing_date, :initiated_by, :closing_options]
+end
+
+defmodule Accountex.AccountsReceivables.Commands.ValidateTransactions do
+  @derive Jason.Encoder
+  defstruct [:period_id, :validation_rules]
+end
+
+defmodule Accountex.AccountsReceivables.Commands.PerformAgingCalculation do
+  @derive Jason.Encoder
+  defstruct [:period_id, :aging_buckets, :calculation_date]
+end
+```
+
+### Event Definitions
+
+```elixir
+defmodule Accountex.AccountsReceivables.Events.PeriodCloseInitiated do
+  @derive Jason.Encoder
+  defstruct [:period_id, :closing_date, :initiated_by, :initiated_at, :status]
+end
+
+defmodule Accountex.AccountsReceivables.Events.TransactionValidationCompleted do
+  @derive Jason.Encoder  
+  defstruct [:period_id, :validation_results, :invalid_transactions, :validated_at]
+end
+```
+
+The period closing enforces **critical business rules**: periods can only be closed when all transactions are validated, aging calculations are current within 24 hours, outstanding reconciliation items are resolved, and GL integration is confirmed. The system maintains complete audit trails throughout the closing process.
+
+### Process Manager Implementation
+
+```elixir
+defmodule Accountex.AccountsReceivables.ProcessManagers.PeriodEndClosingProcessManager do
+  use Commanded.ProcessManagers.ProcessManager,
+    name: "PeriodEndClosingProcessManager",
+    router: Accountex.CommandRouter
+
+  def handle(%PeriodEndClosingProcessManager{}, %PeriodCloseInitiated{} = event) do
+    [
+      %ValidateTransactions{period_id: event.period_id},
+      %PerformAgingCalculation{period_id: event.period_id},
+      %InitiateGLSync{sync_date: event.closing_date, period_id: event.period_id}
+    ]
+  end
+end
+```
+
+## Feature 2: Set Up Parameters
+
+### Configuration Management Design
+
+The parameter setup functionality manages system-wide AR configuration through dedicated aggregates:
+
+- **ARConfiguration**: Handles global AR settings and processing rules
+- **AgingConfiguration**: Specifically manages aging bucket definitions
+
+### Command and Event Structure
+
+```elixir
+defmodule Accountex.AccountsReceivables.Commands.DefineAgingBuckets do
+  @derive Jason.Encoder
+  defstruct [:configuration_id, :buckets, :effective_date, :configured_by]
+end
+
+defmodule Accountex.AccountsReceivables.Events.AgingBucketsDefined do
+  @derive Jason.Encoder
+  defstruct [:configuration_id, :buckets, :effective_date, :configured_by, :configured_at]
+end
+```
+
+Configuration parameters include **aging bucket definitions** with non-overlapping day ranges, **payment terms** with calculation methods and due date logic, **GL account mappings** linking AR operations to chart of accounts, and **processing rules** defining automated behaviors and thresholds. All configuration changes require appropriate authorization levels and maintain full audit history.
+
+## Feature 3: Update GL Account Balances
+
+### Integration Architecture
+
+GL balance updates utilize specialized aggregates for maintaining consistency:
+
+- **GLIntegration**: Manages integration state and synchronization processes
+- **BalanceReconciliation**: Handles reconciliation between AR and GL modules
+
+### Synchronization Commands
+
+```elixir
+defmodule Accountex.AccountsReceivables.Commands.InitiateGLSync do
+  @derive Jason.Encoder
+  defstruct [:sync_id, :sync_date, :account_filters, :initiated_by]
+end
+
+defmodule Accountex.AccountsReceivables.Commands.PostGLJournals do
+  @derive Jason.Encoder
+  defstruct [:sync_id, :journal_entries, :posting_reference]
+end
+```
+
+The GL integration ensures **data consistency** through automated balance synchronization, journal entry generation following double-entry principles, reconciliation processes identifying discrepancies, and posting validation against open GL periods. All synchronization maintains detailed audit trails and supports rollback capabilities.
+
+### Read Model Projection
+
+```elixir
+defmodule Accountex.AccountsReceivables.Projections.GLBalanceReconciliationProjection do
+  use Commanded.Projections.Ecto, name: "gl_balance_reconciliation_projection"
+  
+  project %BalancesReconciled{} = event, _metadata, fn multi ->
+    Ecto.Multi.insert(multi, :reconciliation, %BalanceReconciliation{
+      reconciliation_id: event.reconciliation_id,
+      results: event.reconciliation_results,
+      discrepancies: event.discrepancies,
+      reconciled_at: event.reconciled_at
+    })
+  end
+end
+```
+
+## Feature 4: Multi-Currency Revaluation
+
+### Currency Management Design
+
+Multi-currency revaluation implements sophisticated foreign exchange handling through:
+
+- **CurrencyRevaluation**: Orchestrates revaluation processes
+- **ExchangeRateManager**: Maintains exchange rate data and calculations
+
+### Revaluation Commands and Events
+
+```elixir
+defmodule Accountex.AccountsReceivables.Commands.InitiateCurrencyRevaluation do
+  @derive Jason.Encoder
+  defstruct [:revaluation_id, :base_currency, :revaluation_date, :currencies, :initiated_by]
+end
+
+defmodule Accountex.AccountsReceivables.Commands.CalculateRevaluationGains do
+  @derive Jason.Encoder
+  defstruct [:revaluation_id, :customer_balances, :new_rates, :calculation_date]
+end
+
+defmodule Accountex.AccountsReceivables.Events.RevaluationGainsCalculated do
+  @derive Jason.Encoder
+  defstruct [:revaluation_id, :calculation_results, :total_gain_loss, :calculated_at]
+end
+```
+
+The revaluation process **preserves original transaction currencies** while calculating unrealized gains/losses based on current exchange rates. The system uses officially recognized rate sources, posts adjustments to designated GL accounts, maintains compliance with accounting standards, and provides comprehensive reporting of foreign exchange impacts.
+
+## Integration Points and Process Orchestration
+
+### Cross-Module Integration
+
+The system integrates with multiple modules through well-defined interfaces:
+
+**General Ledger Module**: Posts journal entries through standardized interfaces, maintains real-time balance synchronization, coordinates period status across modules, and validates all GL account references against the chart of accounts.
+
+**Multi-Currency Engine**: Receives exchange rate feeds from authorized providers, provides conversion calculation services, triggers automatic revaluation based on rate movements, and maintains historical rate archives for audit purposes.
+
+**Reporting Services**: Generates period-end reports including aging analysis and trial balances, provides configuration reports showing current parameter settings, and maintains comprehensive audit trails of all events and changes.
+
+### Complex Workflow Management
+
+Process managers orchestrate multi-step operations across aggregates:
+
+```elixir
+defmodule Accountex.AccountsReceivables.ProcessManagers.GLIntegrationProcessManager do
+  use Commanded.ProcessManagers.ProcessManager,
+    name: "GLIntegrationProcessManager"
+
+  def interested?(%GLSyncInitiated{sync_id: sync_id}), do: {:start, sync_id}
+  def interested?(%BalanceUpdatesProcessed{sync_id: sync_id}), do: {:continue, sync_id}
+  def interested?(%GLJournalsPosted{sync_id: sync_id}), do: {:stop, sync_id}
+  
+  def handle(%GLIntegrationProcessManager{}, %GLSyncInitiated{} = event) do
+    [
+      %ProcessBalanceUpdates{sync_id: event.sync_id},
+      %ReconcileBalances{sync_id: event.sync_id}
+    ]
+  end
+end
+```
+
+## Business Rules and Validation Framework
+
+### Critical Validation Rules
+
+**Period-End Closing** requires all customer invoices properly applied, credit memos and payments matched, disputed amounts identified and segregated, aging calculations current and accurate, and GL integration complete and balanced.
+
+**Configuration Management** enforces aging bucket completeness with non-overlapping ranges, valid calculation methods for payment terms, active GL account references in mappings, and comprehensive audit trails for all changes.
+
+**GL Integration** maintains mathematical accuracy in all balance updates, follows standard accounting principles for journal entries, restricts posting to open periods only, and ensures cross-module reconciliations balance perfectly.
+
+**Currency Revaluation** validates exchange rates from authorized sources only, properly classifies revaluation gains and losses, preserves historical rates for audit purposes, and meets all regulatory compliance requirements.
+
+## Error Handling and Recovery Strategies
+
+### Command Validation and Failure Management
+
+The system implements comprehensive error handling through multiple layers. Invalid command structures are rejected at the boundary with detailed error messages. Business rule violations trigger compensating events to maintain consistency. Authorization failures log security events and notify administrators. Data consistency checks prevent corruption through aggregate invariants.
+
+### Process Manager Recovery
+
+Process managers implement robust recovery mechanisms including compensating transaction patterns for reversing partial operations, state recovery through event replay from the event store, defined manual intervention points for complex failures, and automated error notification systems alerting operations teams.
+
+### Projection Rebuild Capabilities
+
+Read model projections support complete reconstruction through event replay mechanisms for rebuilding from the event store, snapshot strategies reducing rebuild time for large datasets, data validation ensuring integrity after reconstruction, and performance optimization for handling millions of events efficiently.
+
+## Performance Optimization Strategies
+
+### Event Store Optimization
+
+The event store implements proper partitioning by aggregate ID for parallel processing, snapshot strategies preventing large aggregate replay overhead, archiving policies moving historical events to cold storage, and read replica configurations distributing projection load.
+
+### Command Processing Efficiency
+
+Command processing achieves high throughput through concurrent processing of independent commands, batch operations for bulk updates, connection pooling and resource management, and comprehensive monitoring with performance alerting.
+
+### Query Performance
+
+Query optimization ensures fast read operations through strategic indexing on projection tables, materialized views for complex aggregations, intelligent caching of frequently accessed data, and continuous query plan analysis and optimization.
+
+## Summary
+
+This Part 4 specification extends the Accountex Accounts Receivables module with sophisticated period-end operations, following established CQRS/ES patterns using Commanded and AshCommanded. The design ensures data consistency, complete auditability, and scalability while maintaining clean separation between commands and queries. All features integrate seamlessly with existing AR functionality and provide robust business logic for enterprise-grade financial operations.
