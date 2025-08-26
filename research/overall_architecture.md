@@ -201,25 +201,25 @@ end
 Each ERP module contains its own **Ash domain** with domain-specific resources, policies, and API configurations. Cross-domain operations are handled through explicit service layers that manage potential unavailability:
 
 ```elixir
-defmodule MyERP.AccountsPayable do
+defmodule Accountex.AccountsPayable do
   use Ash.Domain,
     extensions: [Ash.Policy.Authorizer, AshGraphql.Domain]
 
   resources do
-    resource MyERP.AccountsPayable.Invoice
-    resource MyERP.AccountsPayable.Payment
-    resource MyERP.AccountsPayable.Vendor
+    resource Accountex.AccountsPayable.Invoice
+    resource Accountex.AccountsPayable.Payment
+    resource Accountex.AccountsPayable.Vendor
   end
 
   code_interface do
-    define :create_invoice, action: :create, resource: MyERP.AccountsPayable.Invoice
-    define :pay_invoice, action: :pay, resource: MyERP.AccountsPayable.Invoice
+    define :create_invoice, action: :create, resource: Accountex.AccountsPayable.Invoice
+    define :pay_invoice, action: :pay, resource: Accountex.AccountsPayable.Invoice
   end
 end
 
-defmodule MyERP.AccountsPayable.Invoice do
+defmodule Accountex.AccountsPayable.Invoice do
   use Ash.Resource,
-    domain: MyERP.AccountsPayable,
+    domain: Accountex.AccountsPayable,
     data_layer: AshPostgres.DataLayer
 
   attributes do
@@ -251,7 +251,7 @@ end
 The **event sourcing layer** uses Commanded for aggregates and process managers, while AshCommanded provides compile-time generation of boilerplate code. Each module's events flow through a central event bus that enables loose coupling:
 
 ```elixir
-defmodule ERPSystem.Orders.Aggregates.Order do
+defmodule Accountex.Orders.Aggregates.Order do
   defstruct [:id, :customer_id, :status, :line_items, :total]
   
   def execute(%__MODULE__{id: nil}, %CreateOrder{} = command) do
@@ -276,9 +276,9 @@ defmodule ERPSystem.Orders.Aggregates.Order do
 end
 
 # Cross-domain saga with compensation
-defmodule ERPSystem.Workflows.OrderFulfillmentSaga do
+defmodule Accountex.Workflows.OrderFulfillmentSaga do
   use Commanded.ProcessManagers.ProcessManager,
-    application: ERPSystem.Application
+    application: Accountex.Application
 
   def handle(%__MODULE__{}, %OrderCreated{} = event) do
     # Start cross-domain workflow
@@ -305,11 +305,11 @@ end
 **Phoenix Channels** provide multi-client WebSocket support with role-based authorization integrated through Guardian JWT tokens:
 
 ```elixir
-defmodule ERPWeb.UserSocket do
+defmodule AccountexWeb.UserSocket do
   use Phoenix.Socket
 
-  channel "orders:*", ERPWeb.OrderChannel
-  channel "agent:*", ERPWeb.AgentChannel  # For Jido agents
+  channel "orders:*", AccountexWeb.OrderChannel
+  channel "agent:*", AccountexWeb.AgentChannel  # For Jido agents
 
   def connect(%{"token" => token}, socket, _connect_info) do
     case ERP.Guardian.decode_and_verify(token) do
@@ -321,8 +321,8 @@ defmodule ERPWeb.UserSocket do
   end
 end
 
-defmodule ERPWeb.OrderChannel do
-  use ERPWeb, :channel
+defmodule AccountexWeb.OrderChannel do
+  use AccountexWeb, :channel
 
   def join("orders:" <> order_id, _payload, socket) do
     with :ok <- authorize_order_access(socket.assigns.current_user, order_id) do
