@@ -75,53 +75,53 @@ The module operates on an event-driven architecture where all state changes emit
 
 ### Item Management Rules
 
-#### BR-INV-001: Item Type Validation
+#### BR-IC-001: Item Type Validation
 - Stock items must have valid warehouse assignments
 - Non-stock items cannot have quantity on hand
 - Service items cannot be received into inventory
 - Kit items must have at least one component defined
 
-#### BR-INV-002: Unit of Measure Consistency
+#### BR-IC-002: Unit of Measure Consistency
 - Primary UOM cannot be changed after transactions exist
 - Conversion factors must maintain mathematical consistency
 - Inter-class conversions require explicit approval
 
-#### BR-INV-003: Status Transition Rules
+#### BR-IC-003: Status Transition Rules
 - Active → Inactive: Allowed only when quantity_on_hand = 0
 - Inactive → Discontinued: Requires management approval
 - Discontinued → Active: Creates new revision with audit trail
 
 ### Serial/Lot Number Control
 
-#### BR-INV-004: Serial Number Uniqueness
+#### BR-IC-004: Serial Number Uniqueness
 - Serial numbers must be globally unique within item
 - Format validation: `^[A-Z]{2}[0-9]{10}$` (configurable)
 - Once assigned, serial numbers cannot be reused
 
-#### BR-INV-005: Lot Expiration Management
+#### BR-IC-005: Lot Expiration Management
 - Expired lots automatically quarantined on expiration_date + buffer_days
 - FEFO (First Expired First Out) picking when lot_controlled = true
 - Retest intervals trigger quality hold status
 
-#### BR-INV-006: Traceability Requirements
+#### BR-IC-006: Traceability Requirements
 - All serial/lot controlled items maintain complete genealogy
 - Forward tracing: raw_material → work_in_process → finished_good → customer
 - Backward tracing: customer_complaint → finished_good → raw_material_batch
 
 ### Warehouse Operations
 
-#### BR-INV-007: Bin Capacity Constraints
+#### BR-IC-007: Bin Capacity Constraints
 ```
 validation: current_quantity + incoming_quantity <= bin_capacity
 exception: allow_overflow = true AND overflow_percentage <= 10%
 ```
 
-#### BR-INV-008: Transfer Authorization
+#### BR-IC-008: Transfer Authorization
 - Inter-warehouse transfers > $10,000 require approval
 - Cross-company transfers require inter-company agreement
 - In-transit insurance required for transfers > $50,000
 
-#### BR-INV-009: Negative Inventory Prevention
+#### BR-IC-009: Negative Inventory Prevention
 ```
 rule: quantity_on_hand - quantity_requested >= 0
 exception: allow_negative_inventory = true AND user_role IN [inventory_manager, administrator]
@@ -130,19 +130,19 @@ timing: validation occurs at transaction_commit, not command_validation
 
 ### Physical Count Rules
 
-#### BR-INV-010: Count Freeze Logic
+#### BR-IC-010: Count Freeze Logic
 - No transactions allowed during active count for counted bins
 - Pending transactions queued until count completion
 - Emergency overrides require dual authorization
 
-#### BR-INV-011: Variance Tolerances
+#### BR-IC-011: Variance Tolerances
 ```
 A-items: tolerance = 0.5% OR $100, whichever is less
 B-items: tolerance = 2% OR $500, whichever is less
 C-items: tolerance = 5% OR $1000, whichever is less
 ```
 
-#### BR-INV-012: Recount Triggers
+#### BR-IC-012: Recount Triggers
 - Automatic recount if variance > tolerance
 - Blind recount by different counter required
 - Third count by supervisor if variance persists
@@ -748,16 +748,22 @@ end
 ## Performance Considerations
 
 ### Aggregate Size Management
+
+#### BR-IC-013: Snapshot Management
 - Snapshot InventoryBalance aggregates monthly or after 1000 events
 - Archive completed transfers after 90 days
 - Partition cost layers by fiscal year
 
 ### Query Optimization
+
+#### BR-IC-014: Performance Optimization
 - Denormalize frequently accessed data in read models
 - Cache ATP calculations with 5-minute TTL
 - Pre-calculate ABC classifications daily
 
 ### Event Stream Management
+
+#### BR-IC-015: Event Stream Lifecycle
 - Compress events older than 1 year
 - Archive events older than 7 years
 - Maintain separate streams per warehouse for scalability
@@ -765,16 +771,22 @@ end
 ## Security and Compliance
 
 ### Authorization Rules
+
+#### BR-IC-016: Approval Requirements
 - Inventory adjustments > $1,000 require manager approval
 - Cost method changes require CFO approval
 - Physical count variances > 5% require investigation
 
 ### Audit Requirements
+
+#### BR-IC-017: Audit Trail Maintenance
 - All stock movements maintain complete audit trail
 - User, timestamp, and reason code for every transaction
 - Immutable event log for regulatory compliance
 
 ### Data Retention
+
+#### BR-IC-018: Retention Policies
 - Transaction details: 7 years
 - Lot/serial genealogy: Product lifetime + 2 years
 - Physical count records: 3 years
@@ -782,11 +794,15 @@ end
 ## Migration and Compatibility
 
 ### Legacy System Integration
+
+#### BR-IC-019: Migration Support
 - Support batch imports of historical transactions
 - Maintain backward compatibility with existing item codes
 - Gradual migration path from document-based to event-sourced
 
 ### Data Migration Rules
+
+#### BR-IC-020: Migration Validation
 - Opening balances loaded as initial StockReceived events
 - Cost layers reconstructed from historical transactions
 - Serial/lot numbers validated for uniqueness during import

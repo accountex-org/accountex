@@ -93,10 +93,18 @@ Valid Transitions:
 ### 2.1 Invoice Receipt and Capture
 
 #### Business Rules
+
+##### BR-AP-001: Invoice Uniqueness
 - All invoices must have unique invoice number per vendor
+
+##### BR-AP-002: Invoice Date Validation
 - Invoice date cannot be future-dated
 - Invoice date cannot be more than 90 days in the past
+
+##### BR-AP-003: Due Date Calculation
 - Due date must be calculated based on vendor payment terms
+
+##### BR-AP-004: Currency Validation
 - Currency must match vendor's approved currency list
 
 #### Validation Requirements
@@ -145,12 +153,22 @@ end
 ```
 
 #### Tolerance Configuration
+
+##### BR-AP-005: Quantity Tolerance Rules
 - **Quantity Variance**: ±5% for standard items, ±2% for high-value items, 0% for controlled items
+
+##### BR-AP-006: Price Tolerance Rules
 - **Price Variance**: ±5% of PO price, with absolute maximum of $100
+
+##### BR-AP-007: Date Tolerance Rules
 - **Date Variance**: Invoice date within 7 days of receipt date
+
+##### BR-AP-008: Tax Tolerance Rules
 - **Tax Variance**: ±$0.01 rounding tolerance
 
 #### Exception Handling
+
+##### BR-AP-009: Variance Exception Processing
 - Variances outside tolerance trigger hold status
 - Automatic routing based on variance type and amount
 - Required approval levels based on variance severity
@@ -182,6 +200,8 @@ end
 ```
 
 #### Delegation Rules
+
+##### BR-AP-010: Approval Delegation
 - Temporary delegation with start/end dates
 - Approval limits can be inherited or reduced
 - Delegation chains limited to 2 levels
@@ -216,6 +236,8 @@ end
 ```
 
 #### Split Distribution Rules
+
+##### BR-AP-011: GL Distribution Requirements
 - Support percentage-based splits across multiple accounts
 - Support quantity-based splits for allocation
 - Maintain audit trail of distribution changes
@@ -250,6 +272,8 @@ end
 ```
 
 #### Early Payment Discount Logic
+
+##### BR-AP-012: Early Payment Discount Processing
 - Calculate NPV of discount vs. cost of capital
 - Automatically select invoices with positive NPV
 - Track discount captured vs. discount available metrics
@@ -279,6 +303,8 @@ end
 ```
 
 #### Payment Validation Rules
+
+##### BR-AP-013: Payment Security Validations
 - Bank account validation via prenote or microdeposit
 - OFAC/sanctions screening before payment execution
 - Duplicate payment prevention checks
@@ -965,6 +991,7 @@ end
 
 ### 10.1 Processing Volume Targets
 
+#### BR-AP-014: System Capacity Requirements
 - Support 100,000+ invoices per month
 - Process 50,000+ payments per month
 - Handle 10,000+ active vendors
@@ -972,6 +999,7 @@ end
 
 ### 10.2 Response Time Requirements
 
+#### BR-AP-015: Performance Benchmarks
 - Invoice validation: < 2 seconds
 - Payment processing: < 5 seconds
 - Three-way matching: < 3 seconds
@@ -979,6 +1007,7 @@ end
 
 ### 10.3 Event Processing Requirements
 
+#### BR-AP-016: Event Processing Performance
 - Event persistence: < 100ms
 - Event projection update: < 500ms
 - Process manager reaction: < 1 second

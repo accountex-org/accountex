@@ -36,9 +36,16 @@ The Accounts Receivables (AR) application is a pluggable module in the Accountex
 
 #### Business Rules
 
+##### BR-AR-001: Credit Limit Validation
 - Credit limit validation against outstanding balances and open orders
+
+##### BR-AR-002: Customer Classification
 - Customer classification for pricing and discount tiers
+
+##### BR-AR-003: Territory Assignment
 - Territory and salesperson assignment rules
+
+##### BR-AR-004: Account Relationships
 - Parent-subsidiary account relationships
 
 ### 2. Invoice Management
@@ -71,12 +78,25 @@ The Accounts Receivables (AR) application is a pluggable module in the Accountex
 
 #### Business Rules
 
+##### BR-AR-005: Invoice Numbering
 - Invoice numbering (system-generated or manual)
+
+##### BR-AR-006: Tax Calculation
 - Tax calculation based on shipping address
+
+##### BR-AR-007: Freight Calculations
 - Freight charge calculation by weight or fixed amount
+
+##### BR-AR-008: Discount Hierarchy
 - Discount application hierarchy
+
+##### BR-AR-009: Warehouse Support
 - Multi-warehouse support
+
+##### BR-AR-010: Inventory Integration
 - Inventory allocation and depletion
+
+##### BR-AR-011: Item Tracking
 - Serialized/lot-controlled item tracking
 
 ### 3. Sales Returns Processing
@@ -102,10 +122,19 @@ The Accounts Receivables (AR) application is a pluggable module in the Accountex
 
 #### Business Rules
 
+##### BR-AR-012: Return Authorization
 - Return authorization validation
+
+##### BR-AR-013: Return Item Tracking
 - Serialized/lot/kit item return tracking
+
+##### BR-AR-014: Restocking Rules
 - Inventory restocking rules
+
+##### BR-AR-015: Credit Note Generation
 - Credit note generation
+
+##### BR-AR-016: Return Processing
 - Return bin assignment
 
 ### 4. Payment Processing
@@ -138,11 +167,22 @@ The Accounts Receivables (AR) application is a pluggable module in the Accountex
 
 #### Business Rules
 
+##### BR-AR-017: Payment Method Validation
 - Payment method validation (cash, check, credit card, electronic)
+
+##### BR-AR-018: Auto-Application Logic
 - Auto-application logic based on invoice age
+
+##### BR-AR-019: Payment Discount Calculation
 - Prompt payment discount calculation
+
+##### BR-AR-020: Payment Priority
 - Payment to finance charge priority
+
+##### BR-AR-021: Multi-Currency Handling
 - Multi-currency exchange rate handling
+
+##### BR-AR-022: Payment Analysis
 - Average payment days calculation
 
 ### 5. Finance Charges
@@ -166,10 +206,19 @@ n
 
 #### Business Rules
 
+##### BR-AR-023: Finance Charge Calculation
 - Charge calculation methods (percentage or fixed)
+
+##### BR-AR-024: Minimum Balance Requirements
 - Minimum balance thresholds
+
+##### BR-AR-025: Charge Period Restrictions
 - Charge period restrictions
+
+##### BR-AR-026: Compound Interest
 - Compound interest on outstanding charges
+
+##### BR-AR-027: Finance Charge Eligibility
 - Customer and pay code eligibility
 
 ### 6. Credit Management
@@ -193,8 +242,13 @@ n
 
 #### Business Rules
 
+##### BR-AR-028: Refund Authorization
 - Refund authorization
+
+##### BR-AR-029: AP Integration
 - AP integration for check refunds
+
+##### BR-AR-030: Receipt Processing
 - Negative receipt generation
 
 ### 7. Bank Deposit Management
@@ -219,8 +273,13 @@ n
 
 #### Business Rules
 
+##### BR-AR-031: Receipt Grouping
 - Receipt grouping by bank and date
+
+##### BR-AR-032: Deposit Documentation
 - Deposit slip generation
+
+##### BR-AR-033: Reconciliation Tracking
 - Bank reconciliation markers
 
 ## Integration Points
@@ -316,15 +375,21 @@ n
 
 ### Exchange Rate Management
 
+#### BR-AR-034: Exchange Rate Updates
 - Real-time rate updates
 - Transaction-specific rate overrides
+
+#### BR-AR-035: Currency Gain/Loss
 - Gain/loss calculation on payment
 - Revaluation processing
 
 ### Currency-Specific Rules
 
+#### BR-AR-036: Currency Matching
 - Bank account currency matching
 - Customer currency preferences
+
+#### BR-AR-037: Multi-Currency Operations
 - Multi-currency price lists
 - Foreign currency statements
 
@@ -332,26 +397,53 @@ n
 
 ### Invoice Validation
 
+#### BR-AR-038: Customer Validation
 - Customer exists and is active
+
+#### BR-AR-039: Date Validation
 - Invoice date within open periods
+
+#### BR-AR-040: Terms Validation
 - Payment terms are valid
+
+#### BR-AR-041: Tax Code Validation
 - Tax codes are applicable
+
+#### BR-AR-042: Inventory Validation
 - Inventory availability for stock items
+
+#### BR-AR-043: Serial/Lot Validation
 - Serial/lot numbers are unique
 
 ### Payment Validation
 
+#### BR-AR-044: Payment Amount Validation
 - Payment amount is positive
+
+#### BR-AR-045: Bank Account Currency
 - Bank account matches currency
+
+#### BR-AR-046: Credit Card Validation
 - Credit card is not expired
+
+#### BR-AR-047: Check Format Validation
 - Check number format is valid
+
+#### BR-AR-048: Receipt Date Validation
 - Receipt date is valid
 
 ### Credit Management
 
+#### BR-AR-049: Credit Limit Enforcement
 - Credit limit enforcement
+
+#### BR-AR-050: Past-Due Restrictions
 - Past-due balance restrictions
+
+#### BR-AR-051: Order Hold Management
 - Order hold triggers
+
+#### BR-AR-052: Collection Status
 - Collection status flags
 
 ## Period-End Processing
@@ -372,9 +464,16 @@ n
 
 ### Business Rules
 
+#### BR-AR-053: Period Posting Control
 - Prevent posting to closed periods
+
+#### BR-AR-054: Transaction Completeness
 - Ensure all transactions are posted
+
+#### BR-AR-055: GL Account Validation
 - Validate GL account mappings
+
+#### BR-AR-056: Period-End Reporting
 - Generate period-end reports
 
 ## Reporting Requirements
@@ -1461,17 +1560,33 @@ end
 
 ### Access Control
 
+#### BR-AR-057: Function Permissions
 - Function-level permissions
+
+#### BR-AR-058: Customer Restrictions
 - Customer-level restrictions
+
+#### BR-AR-059: Amount Thresholds
 - Amount thresholds
+
+#### BR-AR-060: Authorization Controls
 - Void/amendment authorization
 
 ### Audit Trail
 
+#### BR-AR-061: Event Immutability
 - All events are immutable
+
+#### BR-AR-062: User Tracking
 - User tracking on all commands
+
+#### BR-AR-063: Timestamp Preservation
 - Timestamp preservation
+
+#### BR-AR-064: Amendment History
 - Amendment history
+
+#### BR-AR-065: Void Tracking
 - Void reason tracking
 
 ## Performance Considerations

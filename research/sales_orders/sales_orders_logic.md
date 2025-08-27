@@ -102,11 +102,11 @@ Products available for sale with multi-location stock levels, pricing rules, and
 
 **Business Rules:**
 
-- Orders require valid customer with active status
-- Credit check must pass based on order value and customer limit
-- All line items must have positive quantities
-- Pricing date determines applicable price lists
-- Ship-to address required for physical items
+**BR-SO-001:** Orders require valid customer with active status
+**BR-SO-002:** Credit check must pass based on order value and customer limit
+**BR-SO-003:** All line items must have positive quantities
+**BR-SO-004:** Pricing date determines applicable price lists
+**BR-SO-005:** Ship-to address required for physical items
 
 ### 3.2 Quote-to-Order Conversion
 
@@ -121,10 +121,10 @@ Products available for sale with multi-location stock levels, pricing rules, and
 
 **Business Rules:**
 
-- Only approved quotes can convert to orders
-- Expired quotes require re-approval
-- Price changes trigger notification if variance exceeds threshold
-- Quoted discounts transfer to order
+**BR-SO-006:** Only approved quotes can convert to orders
+**BR-SO-007:** Expired quotes require re-approval
+**BR-SO-008:** Price changes trigger notification if variance exceeds threshold
+**BR-SO-009:** Quoted discounts transfer to order
 
 ### 3.3 Order Approval Process
 
@@ -426,43 +426,43 @@ end
 
 ### 5.1 Order Entry Rules
 
-- Minimum order value enforcement by customer type
-- Maximum line items per order (configurable)
-- Required fields validation based on order type
-- Date validation for requested ship dates
-- Currency restrictions by customer region
+**BR-SO-010:** Minimum order value enforcement by customer type
+**BR-SO-011:** Maximum line items per order (configurable)
+**BR-SO-012:** Required fields validation based on order type
+**BR-SO-013:** Date validation for requested ship dates
+**BR-SO-014:** Currency restrictions by customer region
 
 ### 5.2 Pricing Rules
 
-- Price list effectivity date validation
-- Quantity break application
-- Discount stacking limitations
-- Manual price override authorization levels
-- Price variance tolerance thresholds
+**BR-SO-015:** Price list effectivity date validation
+**BR-SO-016:** Quantity break application
+**BR-SO-017:** Discount stacking limitations
+**BR-SO-018:** Manual price override authorization levels
+**BR-SO-019:** Price variance tolerance thresholds
 
 ### 5.3 Inventory Rules
 
-- Safety stock maintenance
-- Allocation priority by customer class
-- Kit component availability requirements
-- Substitution approval requirements
-- Backorder acceptance criteria
+**BR-SO-020:** Safety stock maintenance
+**BR-SO-021:** Allocation priority by customer class
+**BR-SO-022:** Kit component availability requirements
+**BR-SO-023:** Substitution approval requirements
+**BR-SO-024:** Backorder acceptance criteria
 
 ### 5.4 Credit Rules
 
-- Credit limit enforcement
-- Payment term restrictions
-- Hold release authority levels
-- Aging threshold policies
-- Credit insurance requirements
+**BR-SO-025:** Credit limit enforcement
+**BR-SO-026:** Payment term restrictions
+**BR-SO-027:** Hold release authority levels
+**BR-SO-028:** Aging threshold policies
+**BR-SO-029:** Credit insurance requirements
 
 ### 5.5 Fulfillment Rules
 
-- Partial shipment minimum thresholds
-- Carrier selection by service level
-- Hazmat shipping restrictions
-- International trade compliance
-- Drop ship vendor requirements
+**BR-SO-030:** Partial shipment minimum thresholds
+**BR-SO-031:** Carrier selection by service level
+**BR-SO-032:** Hazmat shipping restrictions
+**BR-SO-033:** International trade compliance
+**BR-SO-034:** Drop ship vendor requirements
 
 ## 6. Commands and Queries
 
@@ -672,11 +672,11 @@ end
 
 ### 10.2 Audit Requirements
 
-- All order modifications logged with user and timestamp
-- Price override justifications required
-- Credit limit override tracking
-- Cancellation reason codes mandatory
-- Document version history maintained
+**BR-SO-035:** All order modifications logged with user and timestamp
+**BR-SO-036:** Price override justifications required
+**BR-SO-037:** Credit limit override tracking
+**BR-SO-038:** Cancellation reason codes mandatory
+**BR-SO-039:** Document version history maintained
 
 ## 11. Performance Optimizations
 
@@ -1149,22 +1149,22 @@ defmodule Accountex.Sales.Rules.ShippingRules do
 
   def validate_shipping_constraints(order, shipment) do
     rules = [
-      # Cannot ship without payment authorization if required
+      # BR-SO-040: Cannot ship without payment authorization if required
       {:payment_authorized, order.payment_status in [:paid, :credit_approved]},
       
-      # Cannot exceed customer credit limit
+      # BR-SO-041: Cannot exceed customer credit limit
       {:credit_limit, order.total_amount <= customer.credit_limit - customer.current_exposure},
       
-      # Must validate shipping address
+      # BR-SO-042: Must validate shipping address
       {:valid_address, validate_address(shipment.shipping_address)},
       
-      # Cannot ship restricted items to certain locations
+      # BR-SO-043: Cannot ship restricted items to certain locations
       {:restricted_items, !has_restricted_items?(order.items, shipment.destination)},
       
-      # Special handling for hazmat
+      # BR-SO-044: Special handling for hazmat
       {:hazmat_compliance, validate_hazmat_requirements(order.items)},
       
-      # Serialized items must have serial numbers
+      # BR-SO-045: Serialized items must have serial numbers
       {:serial_tracking, all_serials_captured?(shipment.items)}
     ]
     
@@ -1570,29 +1570,29 @@ defmodule Accountex.Sales.Rules.CancellationRules do
 
   def cancellation_cutoff_rules do
     %{
-      same_day_cutoff: ~T[14:00:00],
-      in_fulfillment_requires_approval: true,
-      shipped_orders_not_cancellable: true,
-      max_days_after_order: 30
+      same_day_cutoff: ~T[14:00:00], # BR-SO-046
+      in_fulfillment_requires_approval: true, # BR-SO-047
+      shipped_orders_not_cancellable: true, # BR-SO-048
+      max_days_after_order: 30 # BR-SO-049
     }
   end
 
   def refund_rules do
     %{
-      full_refund_period: 24, # hours
-      restocking_fee_percentage: 15,
-      restocking_fee_max: 500.00,
-      tax_refund_required: true,
-      original_payment_method_required: true
+      full_refund_period: 24, # hours BR-SO-050
+      restocking_fee_percentage: 15, # BR-SO-051
+      restocking_fee_max: 500.00, # BR-SO-052
+      tax_refund_required: true, # BR-SO-053
+      original_payment_method_required: true # BR-SO-054
     }
   end
 
   def approval_thresholds do
     %{
-      value_threshold: 5000.00,
-      vip_customer_approval: true,
-      partially_shipped_approval: true,
-      bulk_cancellation_threshold: 10 # orders
+      value_threshold: 5000.00, # BR-SO-055
+      vip_customer_approval: true, # BR-SO-056
+      partially_shipped_approval: true, # BR-SO-057
+      bulk_cancellation_threshold: 10 # orders BR-SO-058
     }
   end
 end
@@ -1976,29 +1976,29 @@ defmodule Accountex.Sales.Rules.QuoteApprovalRules do
 
   def credit_check_rules do
     %{
-      required_above: 10_000,
-      soft_check_limit: 50_000,
-      hard_check_required_above: 100_000,
-      existing_customer_skip_threshold: 5_000,
-      check_validity_days: 30
+      required_above: 10_000, # BR-SO-059
+      soft_check_limit: 50_000, # BR-SO-060
+      hard_check_required_above: 100_000, # BR-SO-061
+      existing_customer_skip_threshold: 5_000, # BR-SO-062
+      check_validity_days: 30 # BR-SO-063
     }
   end
 
   def overbooking_rules do
     %{
-      max_overbooking_percentage: 110, # Can accept 10% more than available
-      backorder_acceptance_required: true,
-      partial_shipment_minimum: 50, # percent
-      substitute_product_approval_required: true
+      max_overbooking_percentage: 110, # Can accept 10% more than available BR-SO-064
+      backorder_acceptance_required: true, # BR-SO-065
+      partial_shipment_minimum: 50, # percent BR-SO-066
+      substitute_product_approval_required: true # BR-SO-067
     }
   end
 
   def conversion_rules do
     %{
-      require_primary_quote: true,
-      allow_partial_conversion: true,
-      expired_quote_conversion: false,
-      credit_recheck_threshold: 30 # days since last check
+      require_primary_quote: true, # BR-SO-068
+      allow_partial_conversion: true, # BR-SO-069
+      expired_quote_conversion: false, # BR-SO-070
+      credit_recheck_threshold: 30 # days since last check BR-SO-071
     }
   end
 end
@@ -2500,10 +2500,10 @@ defmodule Accountex.Sales.Rules.MasterRuleRegistry do
       ],
       
       conditional_validations: [
-        {:credit_check, "when order_value > 5000"},
-        {:manager_approval, "when discount > 20%"},
-        {:inventory_check, "when immediate_shipment = true"},
-        {:address_validation, "when international = true"}
+        {:credit_check, "when order_value > 5000"}, # BR-SO-102
+        {:manager_approval, "when discount > 20%"}, # BR-SO-103
+        {:inventory_check, "when immediate_shipment = true"}, # BR-SO-104
+        {:address_validation, "when international = true"} # BR-SO-105
       ],
       
       business_hours: %{
@@ -2739,11 +2739,11 @@ end
 
 **Release Validation Pipeline:**
 
-1. **Contract Status Validation**: Verify blanket order is active and not expired
-2. **Date Validation**: Ensure requested delivery date falls within contract period
-3. **Quantity Validation**: Confirm release quantity doesn't exceed remaining contracted quantity
-4. **Credit Validation**: Perform multi-stage credit limit checks with configurable enforcement
-5. **Pricing Lock**: Apply contracted pricing and discounts to released order
+1. **BR-SO-072: Contract Status Validation**: Verify blanket order is active and not expired
+2. **BR-SO-073: Date Validation**: Ensure requested delivery date falls within contract period
+3. **BR-SO-074: Quantity Validation**: Confirm release quantity doesn't exceed remaining contracted quantity
+4. **BR-SO-075: Credit Validation**: Perform multi-stage credit limit checks with configurable enforcement
+5. **BR-SO-076: Pricing Lock**: Apply contracted pricing and discounts to released order
 
 ```elixir
 defmodule Accountex.SalesOrder.BlanketOrderReleasePolicy do
@@ -3565,7 +3565,7 @@ This comprehensive business logic specification provides the foundation for impl
 **Business Rules:**
 
 - Tax entities can be combined into composite tax codes for overlapping jurisdictions
-- Tax rates must have valid effective dates with no gaps in coverage
+- **BR-SO-106:** Tax rates must have valid effective dates with no gaps in coverage
 - Real-time tax queries override stored rates when external services are enabled
 - Tax rate at time of shipment supersedes rate at time of order
 
@@ -3625,8 +3625,8 @@ This comprehensive business logic specification provides the foundation for impl
 
 **Business Rules:**
 
-- Bank accounts must have valid GL account assignments
-- Currency must match for multi-currency transactions
+- **BR-SO-107:** Bank accounts must have valid GL account assignments
+- **BR-SO-108:** Currency must match for multi-currency transactions
 - Accounts can be restricted to specific modules
 - Routing numbers validated against banking standards
 
@@ -3669,7 +3669,7 @@ This comprehensive business logic specification provides the foundation for impl
 **Business Rules:**
 
 - Date ranges validated against fiscal periods
-- Filters must respect data access permissions
+- **BR-SO-109:** Filters must respect data access permissions
 - Complex filters optimized for query performance
 - Filter combinations tested for logical consistency
 
@@ -3778,7 +3778,7 @@ This comprehensive business logic specification provides the foundation for impl
 
 **Business Rules:**
 
-- Each customer must have at least one billing address
+- **BR-SO-110:** Each customer must have at least one billing address
 - Shipping addresses validated for deliverability
 - Address changes trigger tax recalculation
 - Archived addresses retained for historical orders
@@ -3804,8 +3804,8 @@ This comprehensive business logic specification provides the foundation for impl
 **Business Rules:**
 
 - Credit checks performed at order entry and release
-- Temporary credit increases require expiration date
-- Credit hold releases require authorization
+- **BR-SO-111:** Temporary credit increases require expiration date
+- **BR-SO-112:** Credit hold releases require authorization
 - Parent company credit limits apply to subsidiaries
 
 #### 15.1.4 National Account Management
@@ -3866,7 +3866,7 @@ This comprehensive business logic specification provides the foundation for impl
 **Business Rules:**
 
 - Cost method changes restricted with quantity on hand
-- Lot-controlled items require lot tracking setup
+- **BR-SO-113:** Lot-controlled items require lot tracking setup
 - Serialized items enforce unique serial numbers
 - Kit items maintain component relationships
 
@@ -3890,8 +3890,8 @@ This comprehensive business logic specification provides the foundation for impl
 
 **Business Rules:**
 
-- Bin assignments respect item storage requirements
-- Hazmat items require specialized locations
+- **BR-SO-114:** Bin assignments respect item storage requirements
+- **BR-SO-115:** Hazmat items require specialized locations
 - Temperature-controlled zones enforce restrictions
 - Cross-docking bins bypass storage
 
@@ -3958,8 +3958,8 @@ This comprehensive business logic specification provides the foundation for impl
 **Business Rules:**
 
 - FIFO enforcement for lot-controlled items
-- Expiration date validation for perishables
-- Serial numbers required at specific transaction points
+- **BR-SO-116:** Expiration date validation for perishables
+- **BR-SO-117:** Serial numbers required at specific transaction points
 - Lot mixing restrictions for certain items
 
 ### 15.3 Pricing and Discount Management
@@ -3994,9 +3994,9 @@ This comprehensive business logic specification provides the foundation for impl
 
 - Most specific price takes precedence
 - Contract prices override list prices
-- Promotional prices require valid dates
-- Minimum price validation enforced
-- Price changes require authorization based on impact
+- **BR-SO-118:** Promotional prices require valid dates
+- **BR-SO-119:** Minimum price validation enforced
+- **BR-SO-120:** Price changes require authorization based on impact
 
 #### 15.3.2 Customer Pricing Groups
 
@@ -4213,19 +4213,19 @@ This comprehensive business logic specification provides the foundation for impl
 
 **Command: ValidateCustomerData**
 
-- Checks required fields by account group
-- Validates credit limit reasonableness
-- Verifies tax ID format
-- Ensures address deliverability
-- Checks payment term compatibility
+- **BR-SO-077:** Checks required fields by account group
+- **BR-SO-078:** Validates credit limit reasonableness
+- **BR-SO-079:** Verifies tax ID format
+- **BR-SO-080:** Ensures address deliverability
+- **BR-SO-081:** Checks payment term compatibility
 
 **Business Rules:**
 
-- Credit limits cannot exceed insurance coverage
-- Tax-exempt status requires valid certificate
-- International customers require additional documentation
-- Duplicate customers detected by fuzzy matching
-- Inactive customers cannot place new orders
+- **BR-SO-082:** Credit limits cannot exceed insurance coverage
+- **BR-SO-083:** Tax-exempt status requires valid certificate
+- **BR-SO-084:** International customers require additional documentation
+- **BR-SO-085:** Duplicate customers detected by fuzzy matching
+- **BR-SO-086:** Inactive customers cannot place new orders
 
 #### 17.1.2 Inventory Validation Rules
 
@@ -4239,11 +4239,11 @@ This comprehensive business logic specification provides the foundation for impl
 
 **Business Rules:**
 
-- Safety stock must exceed minimum quantity
-- Lead times validated against supplier performance
-- Lot-controlled items require expiration tracking
-- Serialized items enforce one-to-one tracking
-- Kit components must be valid items
+- **BR-SO-087:** Safety stock must exceed minimum quantity
+- **BR-SO-088:** Lead times validated against supplier performance
+- **BR-SO-089:** Lot-controlled items require expiration tracking
+- **BR-SO-090:** Serialized items enforce one-to-one tracking
+- **BR-SO-091:** Kit components must be valid items
 
 ### 17.2 Transaction Validation
 
@@ -4267,11 +4267,11 @@ This comprehensive business logic specification provides the foundation for impl
 
 **Business Rules:**
 
-- Orders cannot exceed customer credit limit without approval
-- Minimum order quantities enforced
-- Shipping dates validated against calendars
-- Tax calculations verified against nexus rules
-- Discounts require authorization above thresholds
+- **BR-SO-092:** Orders cannot exceed customer credit limit without approval
+- **BR-SO-093:** Minimum order quantities enforced
+- **BR-SO-094:** Shipping dates validated against calendars
+- **BR-SO-095:** Tax calculations verified against nexus rules
+- **BR-SO-096:** Discounts require authorization above thresholds
 
 #### 17.2.2 Financial Validation
 
@@ -4285,11 +4285,11 @@ This comprehensive business logic specification provides the foundation for impl
 
 **Business Rules:**
 
-- Debits must equal credits
-- Posting periods must be open
-- Foreign currency requires exchange rates
-- Intercompany transactions balance
-- Supporting documents required for audit
+- **BR-SO-097:** Debits must equal credits
+- **BR-SO-098:** Posting periods must be open
+- **BR-SO-099:** Foreign currency requires exchange rates
+- **BR-SO-100:** Intercompany transactions balance
+- **BR-SO-101:** Supporting documents required for audit
 
 ### 17.3 Data Quality Management
 
@@ -4435,10 +4435,10 @@ defmodule Accountex.SalesOrders.Commands.CreateSalesperson do
   Command to create a new salesperson record
   
   ## Business Rules
-  - Salesperson ID must be unique
-  - Commission rate must be between 0 and 100
-  - At least one territory must be assigned
-  - Manager ID must reference existing salesperson if provided
+  - **BR-SO-121:** Salesperson ID must be unique
+  - **BR-SO-122:** Commission rate must be between 0 and 100
+  - **BR-SO-123:** At least one territory must be assigned
+  - **BR-SO-124:** Manager ID must reference existing salesperson if provided
   """
   
   use Ash.Resource,
@@ -4541,9 +4541,9 @@ defmodule Accountex.SalesOrders.Aggregates.Salesperson do
   - Maintains sales quota assignments
   
   ## Invariants
-  - Active salesperson required for new orders
-  - Commission changes cannot be retroactive
-  - Territory assignments must not overlap
+  - **BR-SO-125:** Active salesperson required for new orders
+  - **BR-SO-126:** Commission changes cannot be retroactive
+  - **BR-SO-127:** Territory assignments must not overlap
   """
   
   use Ash.Resource,
@@ -4616,9 +4616,9 @@ defmodule Accountex.SalesOrders.Commands.DefineSalesTerritory do
   Command to define a new sales territory
   
   ## Business Rules
-  - Territory codes must be unique
-  - Geographic boundaries must not overlap with same type
-  - Parent territory must exist if specified
+  - **BR-SO-128:** Territory codes must be unique
+  - **BR-SO-129:** Geographic boundaries must not overlap with same type
+  - **BR-SO-130:** Parent territory must exist if specified
   """
   
   use Ash.Resource,
@@ -4673,9 +4673,9 @@ defmodule Accountex.SalesOrders.Commands.CreateCustomerProductReference do
   Command to create customer-specific product reference
   
   ## Business Rules
-  - Customer and product must exist
+  - **BR-SO-131:** Customer and product must exist
   - Customer part number unique per customer
-  - Custom pricing requires approval if below minimum margin
+  - **BR-SO-132:** Custom pricing requires approval if below minimum margin
   """
   
   use Ash.Resource,
@@ -4772,8 +4772,8 @@ defmodule Accountex.SalesOrders.Commands.CreateSalesPricingRule do
   
   ## Business Rules
   - Priority determines rule evaluation order
-  - Date ranges must not overlap for same scope
-  - Discount cannot exceed maximum allowed percentage
+  - **BR-SO-133:** Date ranges must not overlap for same scope
+  - **BR-SO-134:** Discount cannot exceed maximum allowed percentage
   """
   
   use Ash.Resource,
@@ -4840,7 +4840,7 @@ defmodule Accountex.SalesOrders.Aggregates.PricingRuleEngine do
   ## Conflict Resolution
   - Higher priority rules override lower
   - Most specific scope wins
-  - Approval required for stacking
+  - **BR-SO-135:** Approval required for stacking
   """
   
   use Ash.Resource,
@@ -4898,7 +4898,7 @@ defmodule Accountex.SalesOrders.Commands.CreateRemarksTemplate do
   Command to create standardized remarks template
   
   ## Business Rules
-  - Template codes must be unique
+  - **BR-SO-136:** Template codes must be unique
   - Category determines where remarks appear
   - Active templates only available for selection
   """
@@ -4938,7 +4938,7 @@ defmodule Accountex.SalesOrders.Commands.DefineSalesActivityType do
   Command to define sales activity type
   
   ## Business Rules
-  - Activity codes must be unique
+  - **BR-SO-137:** Activity codes must be unique
   - Pipeline stage determines workflow position
   - Conversion metrics tracked for each type
   """
