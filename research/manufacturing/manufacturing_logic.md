@@ -2087,3 +2087,1551 @@ Manages completed manufacturing jobs.
    - Index on work order status
    - Composite index on job hierarchy
    - Materialized views for cost rollups
+
+# Manufacturing Business Logic - Part 3 (Chapters 6-8)
+
+## Chapter 6: Posting Finished Jobs
+
+### 6.1 Business Rules and Validations
+
+#### 6.1.1 Pre-Completion Validations
+
+**Required Conditions for Job Completion:**
+
+1. **Work Order Status Validation**
+   - Work order must be in "Released" or "In Process" status
+   - Cannot complete work orders in "Planned", "Cancelled", or "Closed" status
+   - Technical completion flag must not be set
+
+2. **Operation Confirmation Requirements**
+   - All required operations must have confirmation entries
+   - Operation quantities must match or fall within tolerance limits
+   - Labor and machine time must be recorded for time-tracked operations
+   - Quality checkpoints must be passed for quality-controlled operations
+
+3. **Quantity Validations**
+
+   ```elixir
+   defmodule Manufacturing.Validations.CompletionQuantity do
+     def validate_completion_quantity(work_order, completion_qty) do
+       with {:ok, _} <- check_minimum_quantity(work_order, completion_qty),
+            {:ok, _} <- check_maximum_quantity(work_order, completion_qty),
+            {:ok, _} <- check_tolerance_limits(work_order, completion_qty) do
+         :ok
+       end
+     end
+     
+     defp check_maximum_quantity(%{allow_over_completion: false} = order, qty) do
+       max_qty = order.planned_quantity - order.completed_quantity
+       if qty <= max_qty, do: {:ok, qty}, else: {:error, :exceeds_order_quantity}
+     end
+   end
+   ```
+
+4. **Component Availability for Backflush**
+   - Verify sufficient component inventory for backflush consumption
+   - Check reserved materials match requirements
+   - Validate substitute materials if primary components unavailable
+
+#### 6.1.2 Cost Validation Rules
+
+**Cost Component Verification:**
+
+```elixir
+defmodule Manufacturing.Costing.ValidationRules do
+  def validate_cost_components(work_order) do
+    %{
+      material_costs: validate_material_costs(work_order),
+      labor_costs: validate_labor_costs(work_order),
+      overhead_costs: calculate_overhead_allocation(work_order),
+      total_validation: validate_total_cost_reasonableness(work_order)
+    }
+  end
+  
+  defp validate_material_costs(work_order) do
+    # Ensure all issued materials have valid costs
+    # Check for negative costs or missing cost data
+    # Validate against standard costs if using standard costing
+  end
+  
+  defp validate_total_cost_reasonableness(work_order) do
+    # Check if total costs fall within expected range
+    # Flag significant variances for review
+    # Ensure minimum cost thresholds are met
+  end
+end
+```
+
+### 6.2 Commands
+
+#### 6.2.1 Core Completion Commands
+
+```elixir
+defmodule Manufacturing.Commands.JobCompletion do
+  defmodule CompleteWorkOrder do
+    @enforce_keys [:work_order_id, :completed_by, :completion_date, 
+                   :completion_quantity, :completion_type]
+    defstruct [
+      :work_order_id,
+      :completed_by,
+      :completion_date,
+      :completion_quantity,
+      :scrap_quantity,
+      :completion_type, # :full | :partial
+      :quality_data,
+      :serial_numbers,
+      :lot_numbers,
+      :location_id,
+      :notes
+    ]
+  end
+  
+  defmodule PostFinishedGoods do
+    @enforce_keys [:work_order_id, :item_id, :quantity, :location_id]
+    defstruct [
+      :work_order_id,
+      :item_id,
+      :quantity,
+      :location_id,
+      :batch_number,
+      :serial_numbers,
+      :expiry_date,
+      :quality_certificate,
+      :cost_data,
+      :posting_date
+    ]
+  end
+  
+  defmodule ConsumeMaterials do
+    @enforce_keys [:work_order_id, :materials]
+    defstruct [
+      :work_order_id,
+      :materials, # List of {item_id, quantity, lot_number}
+      :consumption_type, # :backflush | :manual
+      :transaction_date,
+      :issued_by
+    ]
+  end
+  
+  defmodule AllocateOverhead do
+    @enforce_keys [:work_order_id, :overhead_amount, :allocation_base]
+    defstruct [
+      :work_order_id,
+      :overhead_amount,
+      :allocation_base, # :labor_hours | :machine_hours | :material_cost
+      :cost_pools,
+      :allocation_date
+    ]
+  end
+  
+  defmodule CalculateVariances do
+    @enforce_keys [:work_order_id, :variance_type]
+    defstruct [
+      :work_order_id,
+      :variance_type, # :material | :labor | :overhead | :all
+      :standard_costs,
+      :actual_costs,
+      :calculation_date
+    ]
+  end
+end
+```
+
+### 6.3 Events
+
+#### 6.3.1 Completion Events
+
+```elixir
+defmodule Manufacturing.Events.JobCompletion do
+  defmodule WorkOrderCompleted do
+    @derive Jason.Encoder
+    defstruct [
+      :work_order_id,
+      :completion_id,
+      :completed_by,
+      :completion_date,
+      :completion_quantity,
+      :scrap_quantity,
+      :completion_type,
+      :final_costs,
+      :quality_metrics,
+      :timestamp
+    ]
+  end
+  
+  defmodule FinishedGoodsPosted do
+    @derive Jason.Encoder
+    defstruct [
+      :posting_id,
+      :work_order_id,
+      :item_id,
+      :quantity,
+      :location_id,
+      :batch_number,
+      :serial_numbers,
+      :unit_cost,
+      :total_value,
+      :gl_entries,
+      :posted_at
+    ]
+  end
+  
+  defmodule MaterialsConsumed do
+    @derive Jason.Encoder
+    defstruct [
+      :consumption_id,
+      :work_order_id,
+      :materials, # [{item_id, quantity, cost, lot_number}]
+      :consumption_type,
+      :total_material_cost,
+      :consumed_at
+    ]
+  end
+  
+  defmodule VariancesCalculated do
+    @derive Jason.Encoder
+    defstruct [
+      :work_order_id,
+      :material_variance,
+      :labor_variance,
+      :overhead_variance,
+      :total_variance,
+      :variance_accounts,
+      :calculated_at
+    ]
+  end
+  
+  defmodule WIPRelieved do
+    @derive Jason.Encoder
+    defstruct [
+      :work_order_id,
+      :wip_account,
+      :relief_amount,
+      :cost_components,
+      :gl_entries,
+      :relieved_at
+    ]
+  end
+end
+```
+
+### 6.4 Workflows
+
+#### 6.4.1 Job Completion Workflow
+
+```elixir
+defmodule Manufacturing.Workflows.JobCompletion do
+  use Commanded.ProcessManagers.ProcessManager,
+    name: "JobCompletionWorkflow",
+    router: Manufacturing.Router
+    
+  defstruct [
+    :work_order_id,
+    :status,
+    :materials_consumed,
+    :goods_posted,
+    :variances_calculated,
+    :gl_posted
+  ]
+  
+  def handle(%__MODULE__{status: :initiated} = state, %WorkOrderCompleted{} = event) do
+    [
+      %ConsumeMaterials{
+        work_order_id: event.work_order_id,
+        materials: calculate_material_consumption(event),
+        consumption_type: :backflush
+      },
+      %PostFinishedGoods{
+        work_order_id: event.work_order_id,
+        item_id: get_finished_item_id(event),
+        quantity: event.completion_quantity,
+        location_id: get_default_location(event)
+      }
+    ]
+  end
+  
+  def handle(%__MODULE__{} = state, %MaterialsConsumed{} = event) do
+    state = %{state | materials_consumed: true}
+    if ready_for_variance_calculation?(state) do
+      %CalculateVariances{
+        work_order_id: event.work_order_id,
+        variance_type: :all
+      }
+    else
+      []
+    end
+  end
+  
+  def handle(%__MODULE__{} = state, %FinishedGoodsPosted{} = event) do
+    state = %{state | goods_posted: true}
+    
+    [
+      %AllocateOverhead{
+        work_order_id: event.work_order_id,
+        overhead_amount: calculate_overhead(event),
+        allocation_base: get_allocation_base()
+      },
+      %UpdateInventoryLevels{
+        item_id: event.item_id,
+        location_id: event.location_id,
+        quantity: event.quantity,
+        transaction_type: :production_receipt
+      }
+    ]
+  end
+  
+  def handle(%__MODULE__{} = state, %VariancesCalculated{} = event) do
+    %PostToGeneralLedger{
+      source: :manufacturing,
+      work_order_id: event.work_order_id,
+      journal_entries: build_journal_entries(event),
+      posting_date: Date.utc_today()
+    }
+  end
+end
+```
+
+#### 6.4.2 Cost Rollup Process
+
+```elixir
+defmodule Manufacturing.Workflows.CostRollup do
+  def execute_cost_rollup(work_order_id) do
+    with {:ok, work_order} <- get_work_order(work_order_id),
+         {:ok, material_costs} <- calculate_material_costs(work_order),
+         {:ok, labor_costs} <- calculate_labor_costs(work_order),
+         {:ok, overhead_costs} <- allocate_overhead(work_order),
+         {:ok, total_costs} <- sum_cost_components(material_costs, labor_costs, overhead_costs) do
+      
+      %WorkOrderCosts{
+        work_order_id: work_order_id,
+        material: material_costs,
+        labor: labor_costs,
+        overhead: overhead_costs,
+        total: total_costs,
+        unit_cost: total_costs / work_order.completion_quantity
+      }
+    end
+  end
+  
+  defp allocate_overhead(work_order) do
+    base_value = case work_order.overhead_base do
+      :labor_hours -> work_order.total_labor_hours
+      :machine_hours -> work_order.total_machine_hours
+      :material_cost -> work_order.material_costs
+    end
+    
+    overhead_rate = get_overhead_rate(work_order.cost_center)
+    {:ok, base_value * overhead_rate}
+  end
+end
+```
+
+### 6.5 Integration Points
+
+#### 6.5.1 Inventory Module Integration
+
+```elixir
+defmodule Manufacturing.Integration.Inventory do
+  def update_inventory_for_completion(completion_event) do
+    # Relieve WIP inventory
+    Inventory.Commands.dispatch(%Inventory.Commands.CreateTransaction{
+      transaction_type: :wip_relief,
+      item_id: completion_event.wip_item_id,
+      quantity: -completion_event.wip_quantity,
+      reference: "WO-#{completion_event.work_order_id}",
+      cost: completion_event.wip_cost
+    })
+    
+    # Increase finished goods
+    Inventory.Commands.dispatch(%Inventory.Commands.CreateTransaction{
+      transaction_type: :production_receipt,
+      item_id: completion_event.finished_item_id,
+      quantity: completion_event.completion_quantity,
+      location_id: completion_event.location_id,
+      batch_number: completion_event.batch_number,
+      serial_numbers: completion_event.serial_numbers,
+      unit_cost: completion_event.unit_cost
+    })
+  end
+  
+  def handle_serial_number_assignment(work_order_id, serial_numbers) do
+    # Register serial numbers in inventory tracking
+    Enum.each(serial_numbers, fn serial ->
+      Inventory.SerialTracking.register(%{
+        serial_number: serial,
+        item_id: get_finished_item(work_order_id),
+        source: :manufacturing,
+        source_ref: work_order_id,
+        status: :available
+      })
+    end)
+  end
+end
+```
+
+#### 6.5.2 General Ledger Integration
+
+```elixir
+defmodule Manufacturing.Integration.GeneralLedger do
+  def post_completion_entries(completion_data) do
+    journal_entries = [
+      # Debit Finished Goods
+      %GL.JournalEntry{
+        account: get_finished_goods_account(completion_data.item_id),
+        debit: completion_data.total_cost,
+        credit: 0,
+        description: "Production completion - WO #{completion_data.work_order_id}"
+      },
+      # Credit WIP accounts
+      %GL.JournalEntry{
+        account: get_wip_material_account(),
+        debit: 0,
+        credit: completion_data.material_cost,
+        description: "WIP Material relief - WO #{completion_data.work_order_id}"
+      },
+      %GL.JournalEntry{
+        account: get_wip_labor_account(),
+        debit: 0,
+        credit: completion_data.labor_cost,
+        description: "WIP Labor relief - WO #{completion_data.work_order_id}"
+      },
+      %GL.JournalEntry{
+        account: get_wip_overhead_account(),
+        debit: 0,
+        credit: completion_data.overhead_cost,
+        description: "WIP Overhead relief - WO #{completion_data.work_order_id}"
+      }
+    ]
+    
+    # Add variance entries if applicable
+    variance_entries = create_variance_entries(completion_data)
+    
+    GL.Commands.dispatch(%GL.Commands.CreateJournalEntry{
+      entries: journal_entries ++ variance_entries,
+      source: :manufacturing,
+      reference: completion_data.work_order_id,
+      posting_date: completion_data.completion_date
+    })
+  end
+end
+```
+
+## Chapter 7: Manufacturing Reports
+
+### 7.1 Report Definitions and Business Requirements
+
+#### 7.1.1 Production Reports
+
+```elixir
+defmodule Manufacturing.Reports.Production do
+  use Manufacturing.Reports.Base
+  
+  defmodule DailyProductionSummary do
+    @behaviour Manufacturing.Reports.ReportBehaviour
+    
+    def generate(params) do
+      %{
+        report_date: params.date,
+        production_metrics: calculate_production_metrics(params),
+        efficiency_indicators: calculate_efficiency(params),
+        quality_metrics: calculate_quality_metrics(params),
+        variance_summary: calculate_variances(params)
+      }
+    end
+    
+    defp calculate_production_metrics(params) do
+      %{
+        planned_quantity: get_planned_quantity(params.date),
+        actual_quantity: get_actual_quantity(params.date),
+        attainment_percentage: calculate_attainment(),
+        units_per_hour: calculate_throughput(),
+        oee: calculate_oee()
+      }
+    end
+  end
+  
+  defmodule WorkOrderStatusReport do
+    def generate(filters \\ %{}) do
+      work_orders = fetch_work_orders(filters)
+      
+      %{
+        summary: %{
+          total: length(work_orders),
+          planned: count_by_status(work_orders, :planned),
+          in_progress: count_by_status(work_orders, :in_progress),
+          completed: count_by_status(work_orders, :completed),
+          overdue: count_overdue(work_orders)
+        },
+        details: Enum.map(work_orders, &format_work_order/1),
+        aging: calculate_aging(work_orders),
+        bottlenecks: identify_bottlenecks(work_orders)
+      }
+    end
+  end
+end
+```
+
+#### 7.1.2 Cost Analysis Reports
+
+```elixir
+defmodule Manufacturing.Reports.CostAnalysis do
+  defmodule VarianceReport do
+    def generate(period) do
+      %{
+        material_variances: calculate_material_variances(period),
+        labor_variances: calculate_labor_variances(period),
+        overhead_variances: calculate_overhead_variances(period),
+        summary: aggregate_variances(period),
+        trends: analyze_variance_trends(period)
+      }
+    end
+    
+    defp calculate_material_variances(period) do
+      work_orders = get_completed_orders(period)
+      
+      Enum.map(work_orders, fn order ->
+        %{
+          work_order_id: order.id,
+          price_variance: calculate_price_variance(order),
+          usage_variance: calculate_usage_variance(order),
+          mix_variance: calculate_mix_variance(order),
+          total_variance: calculate_total_material_variance(order)
+        }
+      end)
+    end
+    
+    defp calculate_price_variance(order) do
+      # (Actual Price - Standard Price) × Actual Quantity
+      actual_cost = order.actual_material_cost
+      standard_cost = order.standard_material_cost * order.actual_material_quantity / order.standard_material_quantity
+      actual_cost - standard_cost
+    end
+  end
+  
+  defmodule UnitCostReport do
+    def generate(item_id, period) do
+      %{
+        item_id: item_id,
+        period: period,
+        standard_cost: get_standard_cost(item_id),
+        actual_costs: calculate_actual_costs(item_id, period),
+        cost_trends: analyze_cost_trends(item_id, period),
+        cost_drivers: identify_cost_drivers(item_id, period),
+        recommendations: generate_cost_recommendations(item_id)
+      }
+    end
+  end
+end
+```
+
+#### 7.1.3 Efficiency Reports
+
+```elixir
+defmodule Manufacturing.Reports.Efficiency do
+  defmodule MachineUtilization do
+    def generate(params) do
+      machines = get_machines(params.plant_id)
+      
+      Enum.map(machines, fn machine ->
+        %{
+          machine_id: machine.id,
+          machine_name: machine.name,
+          available_time: calculate_available_time(machine, params.period),
+          productive_time: calculate_productive_time(machine, params.period),
+          downtime: calculate_downtime(machine, params.period),
+          utilization_rate: calculate_utilization_rate(machine, params.period),
+          oee: calculate_machine_oee(machine, params.period),
+          downtime_reasons: analyze_downtime_reasons(machine, params.period)
+        }
+      end)
+    end
+  end
+  
+  defmodule LaborEfficiency do
+    def generate(params) do
+      %{
+        period: params.period,
+        department: params.department,
+        efficiency_metrics: %{
+          standard_hours: calculate_standard_hours(params),
+          actual_hours: calculate_actual_hours(params),
+          efficiency_percentage: calculate_efficiency_percentage(params),
+          productivity_rate: calculate_productivity_rate(params)
+        },
+        by_employee: calculate_employee_efficiency(params),
+        by_operation: calculate_operation_efficiency(params),
+        overtime_analysis: analyze_overtime(params)
+      }
+    end
+  end
+end
+```
+
+### 7.2 Report Generation Commands and Events
+
+```elixir
+defmodule Manufacturing.Reports.Commands do
+  defmodule GenerateReport do
+    @enforce_keys [:report_type, :parameters, :requested_by]
+    defstruct [
+      :report_type,
+      :parameters,
+      :requested_by,
+      :format, # :pdf | :excel | :json
+      :delivery_method, # :email | :download | :api
+      :schedule # nil for immediate, cron expression for scheduled
+    ]
+  end
+  
+  defmodule ScheduleReport do
+    @enforce_keys [:report_type, :schedule, :recipients]
+    defstruct [
+      :report_type,
+      :schedule, # cron expression
+      :parameters,
+      :recipients,
+      :format,
+      :active
+    ]
+  end
+end
+
+defmodule Manufacturing.Reports.Events do
+  defmodule ReportGenerated do
+    @derive Jason.Encoder
+    defstruct [
+      :report_id,
+      :report_type,
+      :generated_at,
+      :generated_by,
+      :file_location,
+      :format,
+      :parameters
+    ]
+  end
+  
+  defmodule ReportScheduled do
+    @derive Jason.Encoder
+    defstruct [
+      :schedule_id,
+      :report_type,
+      :schedule,
+      :created_by,
+      :created_at
+    ]
+  end
+end
+```
+
+### 7.3 Report Data Aggregation
+
+```elixir
+defmodule Manufacturing.Reports.Aggregation do
+  def aggregate_production_data(filters) do
+    from(wo in WorkOrder,
+      left_join: op in Operation, on: op.work_order_id == wo.id,
+      left_join: qc in QualityCheck, on: qc.work_order_id == wo.id,
+      where: ^apply_filters(filters),
+      group_by: [wo.item_id, wo.work_center_id],
+      select: %{
+        item_id: wo.item_id,
+        work_center_id: wo.work_center_id,
+        total_quantity: sum(wo.completion_quantity),
+        total_scrap: sum(wo.scrap_quantity),
+        avg_cycle_time: avg(op.actual_time),
+        quality_rate: avg(qc.pass_rate),
+        period: ^filters.period
+      }
+    )
+    |> Repo.all()
+  end
+  
+  def calculate_kpis(period) do
+    %{
+      oee: calculate_overall_oee(period),
+      first_pass_yield: calculate_fpy(period),
+      cycle_time: calculate_average_cycle_time(period),
+      inventory_turns: calculate_inventory_turns(period),
+      on_time_delivery: calculate_otd(period),
+      cost_per_unit: calculate_unit_costs(period)
+    }
+  end
+end
+```
+
+## Chapter 8: Maintaining Master Records
+
+### 8.1 Machine Master Maintenance
+
+#### 8.1.1 Commands and Events
+
+```elixir
+defmodule Manufacturing.MasterData.Machine.Commands do
+  defmodule CreateMachine do
+    @enforce_keys [:machine_code, :machine_name, :work_center_id]
+    defstruct [
+      :machine_code,
+      :machine_name,
+      :description,
+      :work_center_id,
+      :capacity_per_hour,
+      :setup_time,
+      :hourly_rate,
+      :efficiency_factor,
+      :maintenance_schedule
+    ]
+  end
+  
+  defmodule UpdateMachine do
+    @enforce_keys [:machine_id]
+    defstruct [
+      :machine_id,
+      :machine_name,
+      :description,
+      :capacity_per_hour,
+      :hourly_rate,
+      :efficiency_factor,
+      :maintenance_schedule,
+      :active
+    ]
+  end
+  
+  defmodule AssignMachineToWorkCenter do
+    @enforce_keys [:machine_id, :work_center_id]
+    defstruct [
+      :machine_id,
+      :work_center_id,
+      :effective_date,
+      :primary_machine
+    ]
+  end
+end
+
+defmodule Manufacturing.MasterData.Machine.Events do
+  defmodule MachineCreated do
+    @derive Jason.Encoder
+    defstruct [
+      :machine_id,
+      :machine_code,
+      :machine_name,
+      :work_center_id,
+      :capacity_per_hour,
+      :created_at,
+      :created_by
+    ]
+  end
+  
+  defmodule MachineUpdated do
+    @derive Jason.Encoder
+    defstruct [
+      :machine_id,
+      :changes,
+      :updated_at,
+      :updated_by
+    ]
+  end
+end
+```
+
+#### 8.1.2 Machine Resource Definition
+
+```elixir
+defmodule Manufacturing.Resources.Machine do
+  use Ash.Resource,
+    domain: Manufacturing.Domain,
+    data_layer: AshPostgres.DataLayer
+    
+  postgres do
+    table "machines"
+    repo Manufacturing.Repo
+  end
+  
+  attributes do
+    uuid_primary_key :id
+    
+    attribute :machine_code, :string, allow_nil?: false
+    attribute :machine_name, :string, allow_nil?: false
+    attribute :description, :string
+    attribute :machine_type, :atom, constraints: [one_of: [:production, :packaging, :quality, :auxiliary]]
+    
+    # Capacity attributes
+    attribute :capacity_per_hour, :decimal
+    attribute :capacity_unit, :string
+    attribute :efficiency_factor, :decimal, default: 1.0
+    attribute :utilization_target, :decimal
+    
+    # Cost attributes
+    attribute :hourly_rate, :decimal
+    attribute :setup_cost, :decimal
+    attribute :overhead_rate, :decimal
+    
+    # Maintenance
+    attribute :maintenance_schedule, :map
+    attribute :last_maintenance_date, :date
+    attribute :next_maintenance_date, :date
+    
+    attribute :active, :boolean, default: true
+    
+    timestamps()
+  end
+  
+  relationships do
+    belongs_to :work_center, Manufacturing.Resources.WorkCenter
+    has_many :operations, Manufacturing.Resources.Operation
+    has_many :downtime_records, Manufacturing.Resources.MachineDowntime
+  end
+  
+  validations do
+    validate compare(:efficiency_factor, greater_than: 0, less_than_or_equal_to: 1)
+    validate compare(:capacity_per_hour, greater_than: 0)
+    validate compare(:hourly_rate, greater_than_or_equal_to: 0)
+  end
+  
+  calculations do
+    calculate :current_utilization, :decimal do
+      # Calculate based on recent operations
+    end
+    
+    calculate :mtbf, :decimal do
+      # Mean Time Between Failures
+    end
+  end
+end
+```
+
+### 8.2 Labor Master Maintenance
+
+#### 8.2.1 Labor Categories and Skills
+
+```elixir
+defmodule Manufacturing.MasterData.Labor.Commands do
+  defmodule CreateLaborCategory do
+    @enforce_keys [:category_code, :category_name, :skill_level]
+    defstruct [
+      :category_code,
+      :category_name,
+      :description,
+      :skill_level, # :apprentice | :skilled | :expert | :master
+      :standard_rate,
+      :overtime_rate,
+      :shift_differentials,
+      :required_certifications
+    ]
+  end
+  
+  defmodule AssignLaborToWorkCenter do
+    @enforce_keys [:employee_id, :work_center_id, :labor_category_id]
+    defstruct [
+      :employee_id,
+      :work_center_id,
+      :labor_category_id,
+      :effective_date,
+      :expiry_date,
+      :primary_assignment
+    ]
+  end
+  
+  defmodule UpdateLaborEfficiency do
+    @enforce_keys [:employee_id, :efficiency_rating]
+    defstruct [
+      :employee_id,
+      :efficiency_rating,
+      :evaluation_date,
+      :evaluated_by,
+      :notes
+    ]
+  end
+end
+```
+
+#### 8.2.2 Labor Resource Definition
+
+```elixir
+defmodule Manufacturing.Resources.LaborCategory do
+  use Ash.Resource,
+    domain: Manufacturing.Domain,
+    data_layer: AshPostgres.DataLayer
+    
+  attributes do
+    uuid_primary_key :id
+    
+    attribute :category_code, :string, allow_nil?: false
+    attribute :category_name, :string, allow_nil?: false
+    attribute :description, :string
+    attribute :skill_level, :atom
+    
+    # Rate structure
+    attribute :standard_rate, :decimal, allow_nil?: false
+    attribute :overtime_rate, :decimal
+    attribute :night_shift_rate, :decimal
+    attribute :weekend_rate, :decimal
+    attribute :holiday_rate, :decimal
+    
+    # Requirements
+    attribute :required_certifications, {:array, :string}
+    attribute :training_requirements, :map
+    
+    attribute :active, :boolean, default: true
+    
+    timestamps()
+  end
+  
+  relationships do
+    has_many :employees, Manufacturing.Resources.Employee
+    has_many :operations, Manufacturing.Resources.Operation
+  end
+  
+  actions do
+    defaults [:create, :read, :update, :destroy]
+    
+    update :adjust_rates do
+      argument :adjustment_percentage, :decimal, allow_nil?: false
+      
+      change fn changeset, _ ->
+        current_rate = Ash.Changeset.get_attribute(changeset, :standard_rate)
+        adjustment = Ash.Changeset.get_argument(changeset, :adjustment_percentage)
+        new_rate = current_rate * (1 + adjustment / 100)
+        
+        changeset
+        |> Ash.Changeset.change_attribute(:standard_rate, new_rate)
+        |> Ash.Changeset.change_attribute(:overtime_rate, new_rate * 1.5)
+      end
+    end
+  end
+end
+```
+
+### 8.3 Bill of Materials Maintenance
+
+#### 8.3.1 BOM Commands and Events
+
+```elixir
+defmodule Manufacturing.MasterData.BOM.Commands do
+  defmodule CreateBOM do
+    @enforce_keys [:item_id, :bom_code, :effectivity_date]
+    defstruct [
+      :item_id,
+      :bom_code,
+      :description,
+      :revision,
+      :effectivity_date,
+      :components,
+      :created_by
+    ]
+  end
+  
+  defmodule AddBOMComponent do
+    @enforce_keys [:bom_id, :component_item_id, :quantity]
+    defstruct [
+      :bom_id,
+      :component_item_id,
+      :quantity,
+      :unit_of_measure,
+      :scrap_factor,
+      :operation_sequence,
+      :reference_designator
+    ]
+  end
+  
+  defmodule CreateBOMRevision do
+    @enforce_keys [:bom_id, :new_revision, :effectivity_date]
+    defstruct [
+      :bom_id,
+      :new_revision,
+      :effectivity_date,
+      :revision_reason,
+      :engineering_change_number,
+      :approved_by,
+      :component_changes
+    ]
+  end
+  
+  defmodule ActivateBOM do
+    @enforce_keys [:bom_id, :activation_date]
+    defstruct [
+      :bom_id,
+      :activation_date,
+      :deactivate_previous,
+      :activated_by
+    ]
+  end
+end
+
+defmodule Manufacturing.MasterData.BOM.Events do
+  defmodule BOMCreated do
+    @derive Jason.Encoder
+    defstruct [
+      :bom_id,
+      :item_id,
+      :bom_code,
+      :revision,
+      :effectivity_date,
+      :created_at,
+      :created_by
+    ]
+  end
+  
+  defmodule BOMRevised do
+    @derive Jason.Encoder
+    defstruct [
+      :bom_id,
+      :old_revision,
+      :new_revision,
+      :effectivity_date,
+      :changes,
+      :revised_at,
+      :revised_by
+    ]
+  end
+  
+  defmodule BOMActivated do
+    @derive Jason.Encoder
+    defstruct [
+      :bom_id,
+      :activation_date,
+      :previous_active_bom_id,
+      :activated_at,
+      :activated_by
+    ]
+  end
+end
+```
+
+#### 8.3.2 BOM Validation and Business Rules
+
+```elixir
+defmodule Manufacturing.MasterData.BOM.Validations do
+  def validate_bom(bom) do
+    with :ok <- check_circular_references(bom),
+         :ok <- validate_component_availability(bom),
+         :ok <- validate_quantities(bom),
+         :ok <- validate_effectivity_dates(bom),
+         :ok <- validate_phantom_items(bom) do
+      {:ok, bom}
+    end
+  end
+  
+  defp check_circular_references(bom) do
+    # Recursive check to prevent item from being its own component
+    graph = build_component_graph(bom)
+    
+    case detect_cycles(graph) do
+      [] -> :ok
+      cycles -> {:error, {:circular_references, cycles}}
+    end
+  end
+  
+  defp validate_phantom_items(bom) do
+    phantom_items = Enum.filter(bom.components, & &1.phantom)
+    
+    Enum.all?(phantom_items, fn item ->
+      # Phantom items should not have inventory tracking
+      not item.track_inventory and
+      # Should have their own BOM
+      has_bom?(item.item_id)
+    end)
+  end
+end
+```
+
+### 8.4 Routing/Operation Masters
+
+#### 8.4.1 Routing Commands
+
+```elixir
+defmodule Manufacturing.MasterData.Routing.Commands do
+  defmodule CreateRouting do
+    @enforce_keys [:item_id, :routing_code, :effective_date]
+    defstruct [
+      :item_id,
+      :routing_code,
+      :description,
+      :routing_type, # :standard | :alternate
+      :effective_date,
+      :operations,
+      :created_by
+    ]
+  end
+  
+  defmodule AddOperation do
+    @enforce_keys [:routing_id, :operation_sequence, :operation_code]
+    defstruct [
+      :routing_id,
+      :operation_sequence,
+      :operation_code,
+      :operation_description,
+      :work_center_id,
+      :setup_time,
+      :run_time,
+      :machine_id,
+      :labor_category_id,
+      :tools_required
+    ]
+  end
+  
+  defmodule UpdateOperationTime do
+    @enforce_keys [:operation_id, :time_type, :new_time]
+    defstruct [
+      :operation_id,
+      :time_type, # :setup | :run | :teardown | :move | :queue
+      :new_time,
+      :time_unit,
+      :effective_date,
+      :reason
+    ]
+  end
+end
+```
+
+#### 8.4.2 Operation Resource Definition
+
+```elixir
+defmodule Manufacturing.Resources.Operation do
+  use Ash.Resource,
+    domain: Manufacturing.Domain,
+    data_layer: AshPostgres.DataLayer
+    
+  attributes do
+    uuid_primary_key :id
+    
+    attribute :operation_code, :string, allow_nil?: false
+    attribute :operation_description, :string
+    attribute :sequence_number, :integer, allow_nil?: false
+    
+    # Time elements
+    attribute :setup_time, :decimal
+    attribute :run_time_per_unit, :decimal
+    attribute :teardown_time, :decimal
+    attribute :move_time, :decimal
+    attribute :queue_time, :decimal
+    attribute :time_unit, :atom, default: :minutes
+    
+    # Resources
+    attribute :machine_required, :boolean, default: false
+    attribute :labor_required, :boolean, default: true
+    attribute :crew_size, :integer, default: 1
+    
+    # Quality
+    attribute :inspection_required, :boolean, default: false
+    attribute :inspection_percentage, :decimal
+    attribute :quality_specifications, :map
+    
+    # Outside processing
+    attribute :outside_processing, :boolean, default: false
+    attribute :vendor_id, :uuid
+    attribute :outside_cost, :decimal
+    
+    attribute :active, :boolean, default: true
+    
+    timestamps()
+  end
+  
+  relationships do
+    belongs_to :routing, Manufacturing.Resources.Routing
+    belongs_to :work_center, Manufacturing.Resources.WorkCenter
+    belongs_to :machine, Manufacturing.Resources.Machine
+    belongs_to :labor_category, Manufacturing.Resources.LaborCategory
+  end
+  
+  validations do
+    validate compare(:sequence_number, greater_than: 0)
+    validate compare(:run_time_per_unit, greater_than: 0)
+    validate compare(:inspection_percentage, greater_than_or_equal_to: 0, less_than_or_equal_to: 100)
+  end
+  
+  calculations do
+    calculate :total_time_per_unit, :decimal, expr(
+      setup_time / lot_size + run_time_per_unit + teardown_time / lot_size
+    )
+  end
+end
+```
+
+### 8.5 Inventory Master for Manufacturing
+
+#### 8.5.1 Manufacturing-Specific Item Attributes
+
+```elixir
+defmodule Manufacturing.MasterData.Item.Commands do
+  defmodule UpdateManufacturingAttributes do
+    @enforce_keys [:item_id]
+    defstruct [
+      :item_id,
+      :make_buy_indicator, # :make | :buy | :both
+      :planning_method, # :mrp | :reorder_point | :kanban
+      :lot_sizing_method, # :lot_for_lot | :eoq | :fixed
+      :safety_stock_method,
+      :lead_time_offset,
+      :manufacturing_lead_time,
+      :cumulative_lead_time,
+      :scrap_percentage,
+      :yield_percentage
+    ]
+  end
+  
+  defmodule SetPlanningParameters do
+    @enforce_keys [:item_id, :parameter_type]
+    defstruct [
+      :item_id,
+      :parameter_type,
+      :safety_stock_quantity,
+      :safety_stock_days,
+      :reorder_point,
+      :reorder_quantity,
+      :minimum_order_quantity,
+      :maximum_order_quantity,
+      :order_multiple
+    ]
+  end
+end
+```
+
+#### 8.5.2 Item Manufacturing Extension
+
+```elixir
+defmodule Manufacturing.Resources.ItemManufacturing do
+  use Ash.Resource,
+    domain: Manufacturing.Domain,
+    data_layer: AshPostgres.DataLayer
+    
+  attributes do
+    uuid_primary_key :id
+    
+    # Planning attributes
+    attribute :make_buy_indicator, :atom, allow_nil?: false
+    attribute :planning_method, :atom, default: :mrp
+    attribute :planning_horizon_days, :integer, default: 90
+    attribute :planning_time_fence_days, :integer, default: 7
+    
+    # Lead times
+    attribute :manufacturing_lead_time, :integer
+    attribute :procurement_lead_time, :integer
+    attribute :cumulative_lead_time, :integer
+    attribute :safety_lead_time, :integer
+    
+    # Lot sizing
+    attribute :lot_sizing_method, :atom
+    attribute :minimum_lot_size, :decimal
+    attribute :maximum_lot_size, :decimal
+    attribute :lot_size_multiple, :decimal
+    attribute :fixed_lot_size, :decimal
+    
+    # Yields and scrap
+    attribute :standard_yield_percentage, :decimal, default: 100.0
+    attribute :scrap_percentage, :decimal, default: 0.0
+    attribute :component_scrap_percentage, :decimal, default: 0.0
+    
+    # Costs
+    attribute :standard_material_cost, :decimal
+    attribute :standard_labor_cost, :decimal
+    attribute :standard_overhead_cost, :decimal
+    attribute :standard_outside_cost, :decimal
+    attribute :last_actual_cost, :decimal
+    
+    timestamps()
+  end
+  
+  relationships do
+    belongs_to :item, Inventory.Resources.Item
+    has_many :boms, Manufacturing.Resources.BOM
+    has_many :routings, Manufacturing.Resources.Routing
+  end
+  
+  validations do
+    validate compare(:standard_yield_percentage, greater_than: 0, less_than_or_equal_to: 100)
+    validate compare(:scrap_percentage, greater_than_or_equal_to: 0, less_than: 100)
+  end
+  
+  calculations do
+    calculate :total_standard_cost, :decimal, expr(
+      standard_material_cost + standard_labor_cost + standard_overhead_cost + standard_outside_cost
+    )
+    
+    calculate :effective_bom_count, :integer do
+      # Count of active BOMs
+    end
+  end
+end
+```
+
+### 8.6 Master Data Maintenance Workflows
+
+#### 8.6.1 Approval Workflows
+
+```elixir
+defmodule Manufacturing.MasterData.Workflows.Approval do
+  use Commanded.ProcessManagers.ProcessManager,
+    name: "MasterDataApproval",
+    router: Manufacturing.Router
+    
+  defstruct [
+    :change_request_id,
+    :entity_type,
+    :entity_id,
+    :status,
+    :approvals_required,
+    :approvals_received,
+    :rejection_reason
+  ]
+  
+  def handle(%__MODULE__{status: :pending} = state, %ChangeRequested{} = event) do
+    approvers = determine_approvers(event.entity_type, event.change_type)
+    
+    Enum.map(approvers, fn approver ->
+      %RequestApproval{
+        request_id: state.change_request_id,
+        approver_id: approver.id,
+        entity_type: event.entity_type,
+        entity_id: event.entity_id,
+        changes: event.changes
+      }
+    end)
+  end
+  
+  def handle(%__MODULE__{} = state, %ApprovalGranted{} = event) do
+    state = %{state | approvals_received: state.approvals_received + 1}
+    
+    if state.approvals_received >= state.approvals_required do
+      %ApplyMasterDataChange{
+        entity_type: state.entity_type,
+        entity_id: state.entity_id,
+        approved_by: event.approver_id,
+        approval_date: DateTime.utc_now()
+      }
+    else
+      [] # Wait for more approvals
+    end
+  end
+  
+  def handle(%__MODULE__{} = state, %ApprovalRejected{} = event) do
+    %RejectMasterDataChange{
+      entity_type: state.entity_type,
+      entity_id: state.entity_id,
+      rejected_by: event.approver_id,
+      rejection_reason: event.reason,
+      rejection_date: DateTime.utc_now()
+    }
+  end
+end
+```
+
+#### 8.6.2 Mass Update Operations
+
+```elixir
+defmodule Manufacturing.MasterData.MassUpdate do
+  def execute_mass_update(entity_type, filter, updates) do
+    with {:ok, entities} <- fetch_entities(entity_type, filter),
+         {:ok, validated} <- validate_updates(entities, updates),
+         {:ok, _} <- create_audit_log(entity_type, entities, updates) do
+      
+      results = Enum.map(validated, fn entity ->
+        apply_update(entity, updates)
+      end)
+      
+      %{
+        total: length(entities),
+        successful: count_successful(results),
+        failed: count_failed(results),
+        details: format_results(results)
+      }
+    end
+  end
+  
+  defp apply_update(entity, updates) do
+    entity
+    |> build_changeset(updates)
+    |> validate_business_rules()
+    |> Repo.update()
+    |> handle_update_result(entity)
+  end
+  
+  def import_master_data(entity_type, file_path) do
+    with {:ok, data} <- parse_file(file_path),
+         {:ok, validated} <- validate_import_data(entity_type, data),
+         {:ok, _} <- check_duplicates(entity_type, validated) do
+      
+      Repo.transaction(fn ->
+        Enum.map(validated, fn row ->
+          create_or_update_entity(entity_type, row)
+        end)
+      end)
+    end
+  end
+end
+```
+
+### 8.7 Data Validation and Integrity
+
+```elixir
+defmodule Manufacturing.MasterData.Validation do
+  def validate_master_data_integrity do
+    %{
+      bom_validations: validate_all_boms(),
+      routing_validations: validate_all_routings(),
+      cost_validations: validate_cost_consistency(),
+      reference_validations: validate_references()
+    }
+  end
+  
+  defp validate_all_boms do
+    Manufacturing.Resources.BOM
+    |> Ash.Query.for_read(:active)
+    |> Ash.read!()
+    |> Enum.map(fn bom ->
+      %{
+        bom_id: bom.id,
+        circular_references: check_circular_references(bom),
+        missing_components: check_missing_components(bom),
+        cost_completeness: check_cost_data(bom),
+        effectivity_gaps: check_effectivity_coverage(bom)
+      }
+    end)
+  end
+  
+  defp validate_references do
+    # Check all foreign key references are valid
+    # Ensure no orphaned records
+    # Validate cross-module references
+  end
+  
+  def enforce_data_governance_rules(entity_type, operation, user) do
+    with :ok <- check_user_permissions(user, entity_type, operation),
+         :ok <- validate_change_window(entity_type),
+         :ok <- check_approval_requirements(entity_type, operation) do
+      :ok
+    end
+  end
+end
+```
+
+## Integration Architecture
+
+### Cross-Module Event Routing
+
+```elixir
+defmodule Manufacturing.Integration.EventRouter do
+  use Commanded.Commands.Router
+  
+  # Route completion events to inventory
+  dispatch [
+    Manufacturing.Events.JobCompletion.WorkOrderCompleted,
+    Manufacturing.Events.JobCompletion.MaterialsConsumed
+  ], to: Inventory.Aggregates.ItemInventory, identity: :item_id
+  
+  # Route completion events to GL
+  dispatch [
+    Manufacturing.Events.JobCompletion.VariancesCalculated,
+    Manufacturing.Events.JobCompletion.WIPRelieved
+  ], to: GeneralLedger.Aggregates.JournalEntry, identity: :gl_batch_id
+  
+  # Route master data changes
+  dispatch [
+    Manufacturing.Events.MasterData.BOMActivated,
+    Manufacturing.Events.MasterData.RoutingCreated
+  ], to: Manufacturing.Aggregates.CostRollup, identity: :item_id
+end
+```
+
+### Error Handling and Recovery
+
+```elixir
+defmodule Manufacturing.ErrorHandling do
+  defmodule CompletionErrorHandler do
+    def handle_completion_failure(work_order_id, error) do
+      case error do
+        {:insufficient_inventory, items} ->
+          # Create shortage report
+          # Optionally allow partial completion
+          # Send notifications
+          
+        {:quality_failure, reasons} ->
+          # Route to quality module
+          # Create NCR (Non-Conformance Report)
+          # Hold completion until resolved
+          
+        {:cost_variance_exceeded, variance} ->
+          # Require approval for high variance
+          # Log for analysis
+          # Potentially allow with override
+          
+        _ ->
+          # Log unexpected error
+          # Create incident
+          # Notify support team
+      end
+    end
+  end
+  
+  defmodule MasterDataErrorHandler do
+    def handle_validation_error(entity_type, validation_errors) do
+      %{
+        entity_type: entity_type,
+        errors: format_validation_errors(validation_errors),
+        suggested_corrections: generate_corrections(validation_errors),
+        impact_analysis: analyze_impact(entity_type, validation_errors)
+      }
+    end
+  end
+end
+```
+
+## Security and Authorization
+
+```elixir
+defmodule Manufacturing.Authorization do
+  defmodule Policies do
+    use Ash.Policy.Authorizer
+    
+    policies do
+      # Job completion policies
+      policy action(:complete_work_order) do
+        authorize_if actor_attribute_equals(:role, [:production_supervisor, :production_manager])
+        authorize_if relates_to_actor_via(:assigned_work_center)
+      end
+      
+      # Master data policies
+      policy action_type(:update) and attribute_changing(:bom) do
+        authorize_if actor_attribute_equals(:role, :engineering_manager)
+        forbid_if expr(active == true and not has_approval())
+      end
+      
+      # Report access policies
+      policy action(:generate_cost_report) do
+        authorize_if actor_attribute_equals(:department, [:accounting, :manufacturing, :executive])
+      end
+    end
+  end
+end
+```
+
+## Performance Optimization
+
+```elixir
+defmodule Manufacturing.Performance do
+  # Caching frequently accessed master data
+  def cache_active_boms do
+    Manufacturing.Resources.BOM
+    |> Ash.Query.for_read(:active)
+    |> Ash.Query.load([:components])
+    |> Ash.read!()
+    |> Enum.each(fn bom ->
+      key = "bom:#{bom.item_id}:active"
+      Cachex.put(:manufacturing_cache, key, bom, ttl: :timer.hours(1))
+    end)
+  end
+  
+  # Batch processing for high-volume operations
+  def batch_complete_work_orders(work_order_ids) do
+    work_order_ids
+    |> Enum.chunk_every(100)
+    |> Task.async_stream(fn batch ->
+      process_completion_batch(batch)
+    end, max_concurrency: 10)
+    |> Enum.to_list()
+  end
+end
+```
+
+## Conclusion
+
+This comprehensive business logic document for Manufacturing modules (Chapters 6-8) provides the foundation for implementing job completion, reporting, and master data maintenance in the Accountex ERP system. The architecture leverages event sourcing, CQRS patterns, and the modular design principles established in the system, ensuring scalability, maintainability, and robust integration with other ERP modules.
