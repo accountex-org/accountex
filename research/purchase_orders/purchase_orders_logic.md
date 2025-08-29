@@ -33,26 +33,22 @@ The Purchase Orders application manages the complete lifecycle of purchase trans
 
 #### Validation Rules
 
-1. **Vendor Validation**
-   - Vendor must exist and be active
-   - Vendor cannot be on payment hold (unless override permission)
-   - Vendor credit rating must be acceptable (configurable)
+**BR-PO-001:** Vendor must exist and be active
+**BR-PO-002:** Vendor cannot be on payment hold (unless override permission)
+**BR-PO-003:** Vendor credit rating must be acceptable (configurable)
 
-2. **Item Validation**
-   - Items must be purchasable (not sales-only)
-   - Kit items must have valid components
-   - Non-stock items require description
-   - Items must have valid unit of measure for purchasing
+**BR-PO-004:** Items must be purchasable (not sales-only)
+**BR-PO-005:** Kit items must have valid components
+**BR-PO-006:** Non-stock items require description
+**BR-PO-007:** Items must have valid unit of measure for purchasing
 
-3. **Pricing Validation**
-   - Unit price must be positive or zero (for samples)
-   - Discount percentage cannot exceed maximum allowed
-   - Total order value must be within authorization limits
+**BR-PO-008:** Unit price must be positive or zero (for samples)
+**BR-PO-009:** Discount percentage cannot exceed maximum allowed
+**BR-PO-010:** Total order value must be within authorization limits
 
-4. **Warehouse Validation**
-   - Destination warehouse must be active
-   - Drop ship orders require valid customer shipping address
-   - Transit warehouse required for inter-warehouse transfers
+**BR-PO-011:** Destination warehouse must be active
+**BR-PO-012:** Drop ship orders require valid customer shipping address
+**BR-PO-013:** Transit warehouse required for inter-warehouse transfers
 
 #### Business Logic
 
@@ -90,63 +86,54 @@ end
 
 #### Amendment Restrictions
 
-1. **Status Restrictions**
-   - Cannot amend if status is Closed or Cancelled
-   - Cannot reduce quantity below received amount
-   - Cannot change vendor after partial receipt
-   - Cannot change warehouse after shipment initiated
+**BR-PO-014:** Cannot amend if status is Closed or Cancelled
+**BR-PO-015:** Cannot reduce quantity below received amount
+**BR-PO-016:** Cannot change vendor after partial receipt
+**BR-PO-017:** Cannot change warehouse after shipment initiated
 
-2. **Item Changes**
-   - Can add new items unless fully received
-   - Can increase quantities unless invoiced
-   - Can modify prices if not invoiced
-   - Cannot delete items with received quantities
+**BR-PO-018:** Can add new items unless fully received
+**BR-PO-019:** Can increase quantities unless invoiced
+**BR-PO-020:** Can modify prices if not invoiced
+**BR-PO-021:** Cannot delete items with received quantities
 
-3. **Audit Requirements**
-   - All amendments must be tracked with timestamp and user
-   - Original values must be preserved
-   - Reason for amendment may be required
+**BR-PO-022:** All amendments must be tracked with timestamp and user
+**BR-PO-023:** Original values must be preserved
+**BR-PO-024:** Reason for amendment may be required
 
 ### Purchase Order Cancellation
 
 #### Cancellation Rules
 
-1. **Full Cancellation**
-   - Allowed only if no items received
-   - Must void any advance payments
-   - Updates vendor purchase statistics
-   - May require cancellation reason
+**BR-PO-025:** Full cancellation allowed only if no items received
+**BR-PO-026:** Must void any advance payments
+**BR-PO-027:** Updates vendor purchase statistics
+**BR-PO-028:** May require cancellation reason
 
-2. **Partial Cancellation**
-   - Cancel remaining open quantities
-   - Maintain history of received items
-   - Adjust commitment values
-   - Update inventory projections
+**BR-PO-029:** Cancel remaining open quantities for partial cancellation
+**BR-PO-030:** Maintain history of received items
+**BR-PO-031:** Adjust commitment values
+**BR-PO-032:** Update inventory projections
 
-3. **Lost Purchase Order Tracking**
-   - Option to save cancelled orders as "lost"
-   - Track cancellation reasons
-   - Available for reporting and analysis
+**BR-PO-033:** Option to save cancelled orders as "lost"
+**BR-PO-034:** Track cancellation reasons
+**BR-PO-035:** Available for reporting and analysis
 
 ### Receiving Process
 
 #### Receipt Validation
 
-1. **Quantity Validation**
-   - Cannot exceed ordered quantity (unless over-receipt allowed)
-   - Must respect minimum receipt quantity
-   - Serial/lot numbers required for tracked items
+**BR-PO-036:** Cannot exceed ordered quantity (unless over-receipt allowed)
+**BR-PO-037:** Must respect minimum receipt quantity
+**BR-PO-038:** Serial/lot numbers required for tracked items
 
-2. **Quality Control**
-   - May require inspection before acceptance
-   - Supports partial acceptance/rejection
-   - Defective items tracked separately
+**BR-PO-039:** May require inspection before acceptance
+**BR-PO-040:** Supports partial acceptance/rejection
+**BR-PO-041:** Defective items tracked separately
 
-3. **Inventory Impact**
-   - Updates on-hand quantities
-   - Triggers reorder point calculations
-   - Updates average costs
-   - Creates inventory transactions
+**BR-PO-042:** Updates on-hand quantities
+**BR-PO-043:** Triggers reorder point calculations
+**BR-PO-044:** Updates average costs
+**BR-PO-045:** Creates inventory transactions
 
 #### Three-Way Matching
 
@@ -920,33 +907,33 @@ For automatic vendor selection:
 
 ### Quantity Validations
 
-- **Over-receipt tolerance** - Configurable percentage
-- **Under-receipt** - Allowed with backorder creation
-- **Reorder point** - Triggers when: On-hand + On-order ≤ Reorder point
-- **Economic order quantity** - Optimal purchase quantity
+**BR-PO-046:** Over-receipt tolerance - Configurable percentage
+**BR-PO-047:** Under-receipt - Allowed with backorder creation
+**BR-PO-048:** Reorder point - Triggers when: On-hand + On-order ≤ Reorder point
+**BR-PO-049:** Economic order quantity - Optimal purchase quantity
 
 ### Tax Calculations
 
-- Apply tax only when all conditions met:
+**BR-PO-050:** Apply tax only when all conditions met:
   - Apply Tax checkbox marked
   - Tax code specified
   - Line item marked taxable
-- Consider minimum/maximum taxable amounts
-- Support tax-inclusive pricing
+**BR-PO-051:** Consider minimum/maximum taxable amounts
+**BR-PO-052:** Support tax-inclusive pricing
 
 ### Multi-Warehouse Handling
 
-- Each line item can specify different warehouse
-- Generate separate shipping instructions per warehouse
-- Track quantities by warehouse
-- Support warehouse transfers post-receipt
+**BR-PO-053:** Each line item can specify different warehouse
+**BR-PO-054:** Generate separate shipping instructions per warehouse
+**BR-PO-055:** Track quantities by warehouse
+**BR-PO-056:** Support warehouse transfers post-receipt
 
 ### Foreign Currency
 
-- Lock exchange rate at order creation
-- Calculate realized gains/losses on payment
-- Support multi-currency vendors
-- Maintain home currency reporting
+**BR-PO-057:** Lock exchange rate at order creation
+**BR-PO-058:** Calculate realized gains/losses on payment
+**BR-PO-059:** Support multi-currency vendors
+**BR-PO-060:** Maintain home currency reporting
 
 ## Integration Points
 
@@ -1097,47 +1084,40 @@ Blanket PO → Release → Create PO → [Standard PO Flow]
 
 ### Purchase Order Creation
 
-1. **Vendor Validation**
-   - Must be active
-   - Must have valid tax ID
-   - Credit limit not exceeded
-   - No payment holds
+**BR-PO-125:** Vendor must be active
+**BR-PO-126:** Must have valid tax ID
+**BR-PO-127:** Credit limit not exceeded
+**BR-PO-128:** No payment holds
 
-2. **Item Validation**
-   - Must be purchasable
-   - Valid for specified warehouse
-   - Correct unit of measure
-   - Vendor item cross-reference exists
+**BR-PO-129:** Item must be purchasable
+**BR-PO-130:** Valid for specified warehouse
+**BR-PO-131:** Correct unit of measure
+**BR-PO-132:** Vendor item cross-reference exists
 
-3. **Date Validation**
-   - Request date ≥ Order date
-   - Order date not in closed period
-   - Valid until date > Current date (for blankets)
+**BR-PO-133:** Request date ≥ Order date
+**BR-PO-134:** Order date not in closed period
+**BR-PO-135:** Valid until date > Current date (for blankets)
 
-4. **Quantity Validation**
-   - Positive quantities only
-   - Meets vendor minimum order
-   - Within maximum order limits
-   - Multiple of order increment
+**BR-PO-136:** Positive quantities only
+**BR-PO-137:** Meets vendor minimum order
+**BR-PO-138:** Within maximum order limits
+**BR-PO-139:** Multiple of order increment
 
 ### Receipt Validation
 
-1. **Quantity Checks**
-   - Cannot exceed PO quantity + tolerance
-   - Must be positive
-   - Serial count matches quantity
-   - Lot quantities sum to total
+**BR-PO-140:** Cannot exceed PO quantity + tolerance
+**BR-PO-141:** Receipt quantity must be positive
+**BR-PO-142:** Serial count matches quantity
+**BR-PO-143:** Lot quantities sum to total
 
-2. **Date Validation**
-   - Receipt date ≥ PO date
-   - Not in closed period
-   - Before expiration (for lot-controlled)
+**BR-PO-144:** Receipt date ≥ PO date
+**BR-PO-145:** Not in closed period
+**BR-PO-146:** Before expiration (for lot-controlled)
 
-3. **Warehouse Validation**
-   - Warehouse is active
-   - Item allowed in warehouse
-   - Bin location exists
-   - Sufficient capacity
+**BR-PO-147:** Warehouse is active
+**BR-PO-148:** Item allowed in warehouse
+**BR-PO-149:** Bin location exists
+**BR-PO-150:** Sufficient capacity
 
 ## Error Handling
 
@@ -1285,23 +1265,20 @@ The Purchase Orders application manages the procurement lifecycle from requisiti
 
 #### Validation Rules
 
-1. **Vendor Validation**
-   - Vendor must be active
-   - Vendor currency must match PO currency
-   - Credit limit check if configured
-   - Required fields: vendor number, company name
+**BR-PO-061:** Vendor must be active
+**BR-PO-062:** Vendor currency must match PO currency
+**BR-PO-063:** Credit limit check if configured
+**BR-PO-064:** Required fields: vendor number, company name
 
-2. **Line Item Validation**
-   - Item must be configured for purchase orders
-   - Quantity must be positive
-   - Unit cost validation against vendor pricing
-   - Warehouse must be valid and active
-   - Tax code must be valid if taxable
+**BR-PO-065:** Item must be configured for purchase orders
+**BR-PO-066:** Quantity must be positive
+**BR-PO-067:** Unit cost validation against vendor pricing
+**BR-PO-068:** Warehouse must be valid and active
+**BR-PO-069:** Tax code must be valid if taxable
 
-3. **Order Total Validation**
-   - Minimum order amount check
-   - Maximum order amount check against approval limits
-   - Budget validation if budget control enabled
+**BR-PO-070:** Minimum order amount check
+**BR-PO-071:** Maximum order amount check against approval limits
+**BR-PO-072:** Budget validation if budget control enabled
 
 #### Calculation Rules
 
@@ -1734,11 +1711,11 @@ The Purchase Orders application manages the procurement process, vendor relation
 
 #### Business Rules
 
-- Vendors with existing transactions cannot be deleted
-- Inactive vendors cannot be used in new transactions
-- One-time vendors are automatically purged after specified periods
-- Maximum check amounts enforce payment controls
-- Credit limits trigger warnings or blocks on new orders
+**BR-PO-093:** Vendors with existing transactions cannot be deleted
+**BR-PO-094:** Inactive vendors cannot be used in new transactions
+**BR-PO-095:** One-time vendors are automatically purged after specified periods
+**BR-PO-096:** Maximum check amounts enforce payment controls
+**BR-PO-097:** Credit limits trigger warnings or blocks on new orders
 
 ### Inventory Item
 
@@ -1758,12 +1735,12 @@ The Purchase Orders application manages the procurement process, vendor relation
 
 #### Business Rules
 
-- Cost method cannot be changed after initial setup
-- Negative quantity controls for drop shipments
-- Kit items may require prebuild before shipment
-- Lot-controlled items require lot number tracking
-- Serialized items require unique serial number tracking
-- Decimal places for quantities cannot be decreased
+**BR-PO-098:** Cost method cannot be changed after initial setup
+**BR-PO-099:** Negative quantity controls for drop shipments
+**BR-PO-100:** Kit items may require prebuild before shipment
+**BR-PO-101:** Lot-controlled items require lot number tracking
+**BR-PO-102:** Serialized items require unique serial number tracking
+**BR-PO-103:** Decimal places for quantities cannot be decreased
 
 ### Purchase Order
 
@@ -1786,11 +1763,11 @@ The Purchase Orders application manages the procurement process, vendor relation
 
 #### Business Rules
 
-- Cannot exceed vendor credit limits if enforced
-- Must meet minimum order amounts if specified
-- Lead time calculations affect expected delivery
-- Price variance tolerances trigger warnings
-- Approval workflows based on amount thresholds
+**BR-PO-104:** Cannot exceed vendor credit limits if enforced
+**BR-PO-105:** Must meet minimum order amounts if specified
+**BR-PO-106:** Lead time calculations affect expected delivery
+**BR-PO-107:** Price variance tolerances trigger warnings
+**BR-PO-108:** Approval workflows based on amount thresholds
 
 ## Core Workflows
 
@@ -1922,35 +1899,35 @@ The Purchase Orders application manages the procurement process, vendor relation
 
 ### Vendor Rules
 
-- Credit limit enforcement
-- Payment term validation
-- Minimum order requirements
-- Preferred vendor selection
-- Subcontractor restrictions
+**BR-PO-151:** Credit limit enforcement
+**BR-PO-152:** Payment term validation
+**BR-PO-153:** Minimum order requirements
+**BR-PO-154:** Preferred vendor selection
+**BR-PO-155:** Subcontractor restrictions
 
 ### Inventory Rules
 
-- Negative quantity controls
-- Reorder point triggers
-- Safety stock maintenance
-- Lot expiration tracking
-- Serial number uniqueness
+**BR-PO-156:** Negative quantity controls
+**BR-PO-157:** Reorder point triggers
+**BR-PO-158:** Safety stock maintenance
+**BR-PO-159:** Lot expiration tracking
+**BR-PO-160:** Serial number uniqueness
 
 ### Pricing Rules
 
-- Quantity break pricing
-- Contract pricing
-- Promotional pricing periods
-- Currency conversion
-- Landed cost calculations
+**BR-PO-161:** Quantity break pricing
+**BR-PO-162:** Contract pricing
+**BR-PO-163:** Promotional pricing periods
+**BR-PO-164:** Currency conversion
+**BR-PO-165:** Landed cost calculations
 
 ### Approval Rules
 
-- Purchase order limits
-- Vendor selection approval
-- Price variance tolerance
-- Emergency order handling
-- Budget compliance
+**BR-PO-166:** Purchase order limits
+**BR-PO-167:** Vendor selection approval
+**BR-PO-168:** Price variance tolerance
+**BR-PO-169:** Emergency order handling
+**BR-PO-170:** Budget compliance
 
 ## Calculations
 
@@ -2601,12 +2578,12 @@ The Purchase Orders application manages the procurement lifecycle within Account
 
 **Business Rules:**
 
-- Purchase orders require valid vendor selection
-- Items must have positive quantities and valid pricing
-- Currency and exchange rates must be set for international orders
-- Approval workflows based on order value thresholds
-- Cannot modify confirmed orders without creating change orders
-- Automatic status updates based on receipt completion
+**BR-PO-109:** Purchase orders require valid vendor selection
+**BR-PO-110:** Items must have positive quantities and valid pricing
+**BR-PO-111:** Currency and exchange rates must be set for international orders
+**BR-PO-112:** Approval workflows based on order value thresholds
+**BR-PO-113:** Cannot modify confirmed orders without creating change orders
+**BR-PO-114:** Automatic status updates based on receipt completion
 
 ### 2. Vendor Aggregate
 
@@ -2618,11 +2595,11 @@ The Purchase Orders application manages the procurement lifecycle within Account
 
 **Business Rules:**
 
-- Vendors must have valid payment terms configured
-- Credit limits and outstanding balance tracking
-- Performance metrics tracking (on-time delivery, quality ratings)
-- Preferred vendor status for specific item categories
-- Tax identification and compliance validation
+**BR-PO-115:** Vendors must have valid payment terms configured
+**BR-PO-116:** Credit limits and outstanding balance tracking
+**BR-PO-117:** Performance metrics tracking (on-time delivery, quality ratings)
+**BR-PO-118:** Preferred vendor status for specific item categories
+**BR-PO-119:** Tax identification and compliance validation
 
 ### 3. RTV (Return to Vendor) Order Aggregate
 
@@ -2637,11 +2614,11 @@ The Purchase Orders application manages the procurement lifecycle within Account
 
 **Business Rules:**
 
-- RTV orders must reference original purchase order
-- Return authorization required before shipping
-- Quality inspection documentation required
-- Return shipping cost allocation rules
-- Credit memo reconciliation requirements
+**BR-PO-120:** RTV orders must reference original purchase order
+**BR-PO-121:** Return authorization required before shipping
+**BR-PO-122:** Quality inspection documentation required
+**BR-PO-123:** Return shipping cost allocation rules
+**BR-PO-124:** Credit memo reconciliation requirements
 
 ## Commands and Events
 
