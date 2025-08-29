@@ -1,0 +1,999 @@
+@prefix : <http://accountex.org/ontology/general-ledger#> .
+@prefix gl: <http://accountex.org/ontology/general-ledger#> .
+@prefix core: <http://accountex.org/ontology/core#> .
+@prefix sm: <http://accountex.org/ontology/system-manager#> .
+@prefix agent: <http://accountex.org/ontology/agent#> .
+@prefix event: <http://accountex.org/ontology/event#> .
+@prefix mod: <http://accountex.org/ontology/module#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix xml: <http://www.w3.org/XML/1998/namespace> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix foaf: <http://xmlns.com/foaf/0.1/> .
+@prefix dcterms: <http://purl.org/dc/terms/> .
+@prefix schema: <https://schema.org/> .
+@prefix fibo-fnd: <https://spec.edmcouncil.org/fibo/ontology/FND/> .
+@prefix fibo-fnd-acc: <https://spec.edmcouncil.org/fibo/ontology/FND/Accounting/> .
+@prefix time: <http://www.w3.org/2006/time#> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
+
+# ============================================================================
+# Ontology Declaration
+# ============================================================================
+
+<http://accountex.org/ontology/general-ledger> a owl:Ontology ;
+    owl:versionIRI <http://accountex.org/ontology/general-ledger/1.0> ;
+    dcterms:title "Accountex General Ledger Domain Ontology"@en ;
+    dcterms:description "OWL ontology for the General Ledger domain of an Elixir-based accounting and ERP system using Ash framework, Jido agents, and Commanded event sourcing"@en ;
+    dcterms:creator "Accountex Development Team" ;
+    dcterms:created "2025-01-01"^^xsd:date ;
+    dcterms:license <http://opensource.org/licenses/MIT> ;
+    owl:imports <http://accountex.org/ontology/system-manager> ,
+                <http://xmlns.com/foaf/0.1/> ,
+                <http://purl.org/dc/terms/> ,
+                <http://www.w3.org/2006/time> ,
+                <http://www.w3.org/ns/prov> ,
+                <https://spec.edmcouncil.org/fibo/ontology/FND/Accounting/> ;
+    rdfs:comment "This ontology models the General Ledger domain for a modular, event-sourced accounting and ERP system with agentic capabilities"@en .
+
+# ============================================================================
+# Core Chart of Accounts Classes
+# ============================================================================
+
+gl:ChartOfAccount a owl:Class ;
+    rdfs:label "Chart of Account"@en ;
+    rdfs:comment "A single account in the chart of accounts representing a financial category"@en ;
+    rdfs:subClassOf sm:AshResource ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty gl:hasAccountIdentifier ;
+        owl:cardinality "1"^^xsd:nonNegativeInteger
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty gl:hasAccountDescription ;
+        owl:cardinality "1"^^xsd:nonNegativeInteger
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty gl:hasAccountStatus ;
+        owl:someValuesFrom gl:AccountStatus
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty gl:hasAccountType ;
+        owl:someValuesFrom gl:AccountType
+    ] .
+
+gl:AccountCategory a owl:Class ;
+    rdfs:label "Account Category"@en ;
+    rdfs:comment "A categorization for grouping related accounts in financial statements"@en ;
+    rdfs:subClassOf sm:AshResource ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty gl:hasCategoryIdentifier ;
+        owl:cardinality "1"^^xsd:nonNegativeInteger
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty gl:hasCategoryTypeDescription ;
+        owl:cardinality "1"^^xsd:nonNegativeInteger
+    ] .
+
+gl:AccountGroup a owl:Class ;
+    rdfs:label "Account Group"@en ;
+    rdfs:comment "A hierarchical grouping of accounts for reporting purposes"@en ;
+    rdfs:subClassOf sm:AshResource ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty gl:hasGroupIdentifier ;
+        owl:cardinality "1"^^xsd:nonNegativeInteger
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty gl:hasReportingLevel ;
+        owl:someValuesFrom xsd:integer
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty gl:belongsToCategory ;
+        owl:someValuesFrom gl:AccountCategory
+    ] .
+
+gl:AccountSegmentValue a owl:Class ;
+    rdfs:label "Account Segment Value"@en ;
+    rdfs:comment "A value for a specific segment in a multi-segment account structure"@en ;
+    rdfs:subClassOf sm:AshResource ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty gl:hasSegmentNumber ;
+        owl:cardinality "1"^^xsd:nonNegativeInteger
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty gl:hasSegmentValue ;
+        owl:cardinality "1"^^xsd:nonNegativeInteger
+    ] .
+
+gl:AccountBalance a owl:Class ;
+    rdfs:label "Account Balance"@en ;
+    rdfs:comment "The balance of an account for a specific fiscal year with period-based amounts"@en ;
+    rdfs:subClassOf sm:AshResource ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty gl:hasFiscalYear ;
+        owl:cardinality "1"^^xsd:nonNegativeInteger
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty gl:belongsToAccount ;
+        owl:someValuesFrom gl:ChartOfAccount
+    ] .
+
+# ============================================================================
+# Journal Entry Classes
+# ============================================================================
+
+gl:JournalEntryBatch a owl:Class ;
+    rdfs:label "Journal Entry Batch"@en ;
+    rdfs:comment "A batch containing multiple journal entries for processing together"@en ;
+    rdfs:subClassOf sm:AshResource ;
+    rdfs:subClassOf event:Aggregate ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty gl:hasBatchNumber ;
+        owl:cardinality "1"^^xsd:nonNegativeInteger
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty gl:hasBatchStatus ;
+        owl:someValuesFrom gl:BatchStatus
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty gl:hasSourceModule ;
+        owl:someValuesFrom xsd:string
+    ] .
+
+gl:JournalEntry a owl:Class ;
+    rdfs:label "Journal Entry"@en ;
+    rdfs:comment "A journal entry recording a financial transaction"@en ;
+    rdfs:subClassOf sm:AshResource ;
+    rdfs:subClassOf fibo-fnd-acc:JournalEntry ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty gl:hasJournalIdentifier ;
+        owl:cardinality "1"^^xsd:nonNegativeInteger
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty gl:hasTransactionDate ;
+        owl:cardinality "1"^^xsd:nonNegativeInteger
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty gl:belongsToBatch ;
+        owl:someValuesFrom gl:JournalEntryBatch
+    ] .
+
+gl:JournalEntryLine a owl:Class ;
+    rdfs:label "Journal Entry Line"@en ;
+    rdfs:comment "A line item within a journal entry representing a debit or credit"@en ;
+    rdfs:subClassOf sm:AshResource ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty gl:belongsToEntry ;
+        owl:someValuesFrom gl:JournalEntry
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty gl:referencesAccount ;
+        owl:someValuesFrom gl:ChartOfAccount
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty gl:hasSequenceNumber ;
+        owl:cardinality "1"^^xsd:nonNegativeInteger
+    ] .
+
+gl:UnpostedJournalEntryLine a owl:Class ;
+    rdfs:label "Unposted Journal Entry Line"@en ;
+    rdfs:comment "A journal entry line that has not yet been posted to the general ledger"@en ;
+    rdfs:subClassOf gl:JournalEntryLine ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty gl:awaitingPosting ;
+        owl:hasValue true
+    ] .
+
+# ============================================================================
+# Transfer and Transaction Classes
+# ============================================================================
+
+gl:GeneralLedgerTransfer a owl:Class ;
+    rdfs:label "General Ledger Transfer"@en ;
+    rdfs:comment "A transfer from a subsidiary module to the general ledger"@en ;
+    rdfs:subClassOf sm:AshResource ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty gl:hasTransferDescription ;
+        owl:cardinality "1"^^xsd:nonNegativeInteger
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty gl:hasSourceModule ;
+        owl:cardinality "1"^^xsd:nonNegativeInteger
+    ] .
+
+gl:GeneralLedgerTransaction a owl:Class ;
+    rdfs:label "General Ledger Transaction"@en ;
+    rdfs:comment "A posted transaction in the general ledger"@en ;
+    rdfs:subClassOf sm:AshResource ;
+    rdfs:subClassOf fibo-fnd-acc:Transaction ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty gl:hasTransactionStatus ;
+        owl:someValuesFrom gl:TransactionStatus
+    ] .
+
+# ============================================================================
+# Budget Classes
+# ============================================================================
+
+gl:BudgetControl a owl:Class ;
+    rdfs:label "Budget Control"@en ;
+    rdfs:comment "A budget control structure for managing budget definitions"@en ;
+    rdfs:subClassOf sm:AshResource ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty gl:hasBudgetIdentifier ;
+        owl:cardinality "1"^^xsd:nonNegativeInteger
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty gl:hasBudgetYear ;
+        owl:cardinality "1"^^xsd:nonNegativeInteger
+    ] .
+
+gl:BudgetData a owl:Class ;
+    rdfs:label "Budget Data"@en ;
+    rdfs:comment "Budget amounts for an account within a budget control"@en ;
+    rdfs:subClassOf sm:AshResource ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty gl:belongsToBudgetControl ;
+        owl:someValuesFrom gl:BudgetControl
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty gl:budgetForAccount ;
+        owl:someValuesFrom gl:ChartOfAccount
+    ] .
+
+gl:BudgetTransfer a owl:Class ;
+    rdfs:label "Budget Transfer"@en ;
+    rdfs:comment "A transfer of budget amounts between accounts or companies"@en ;
+    rdfs:subClassOf sm:AshResource ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty gl:hasSubsidiaryCompanyId ;
+        owl:cardinality "1"^^xsd:nonNegativeInteger
+    ] .
+
+# ============================================================================
+# Supporting Classes
+# ============================================================================
+
+gl:AccountNote a owl:Class ;
+    rdfs:label "Account Note"@en ;
+    rdfs:comment "A textual note attached to a chart of account"@en ;
+    rdfs:subClassOf sm:AshResource ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty gl:attachedToAccount ;
+        owl:someValuesFrom gl:ChartOfAccount
+    ] .
+
+gl:JournalEntryBatchRemark a owl:Class ;
+    rdfs:label "Journal Entry Batch Remark"@en ;
+    rdfs:comment "A remark or comment attached to a journal entry batch"@en ;
+    rdfs:subClassOf sm:AshResource ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty gl:attachedToBatch ;
+        owl:someValuesFrom gl:JournalEntryBatch
+    ] .
+
+gl:AllocationDistribution a owl:Class ;
+    rdfs:label "Allocation Distribution"@en ;
+    rdfs:comment "Distribution rules for allocating amounts across accounts"@en ;
+    rdfs:subClassOf sm:AshResource ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty gl:distributesFromAccount ;
+        owl:someValuesFrom gl:ChartOfAccount
+    ] .
+
+gl:PostingDistribution a owl:Class ;
+    rdfs:label "Posting Distribution"@en ;
+    rdfs:comment "Rules for distributing postings to multiple accounts"@en ;
+    rdfs:subClassOf sm:AshResource ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty gl:distributesFromAccount ;
+        owl:someValuesFrom gl:ChartOfAccount
+    ] .
+
+gl:AccountMapping a owl:Class ;
+    rdfs:label "Account Mapping"@en ;
+    rdfs:comment "A mapping between old and new account identifiers"@en ;
+    rdfs:subClassOf sm:AshResource .
+
+# ============================================================================
+# System Configuration Classes
+# ============================================================================
+
+gl:GeneralLedgerSystem a owl:Class ;
+    rdfs:label "General Ledger System"@en ;
+    rdfs:comment "System-wide configuration for the general ledger module"@en ;
+    rdfs:subClassOf sm:SystemConfiguration ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty gl:hasCurrentFiscalYear ;
+        owl:cardinality "1"^^xsd:nonNegativeInteger
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty gl:hasRetainedEarningsAccount ;
+        owl:cardinality "1"^^xsd:nonNegativeInteger
+    ] .
+
+gl:FiscalPeriod a owl:Class ;
+    rdfs:label "Fiscal Period"@en ;
+    rdfs:comment "A fiscal period within a fiscal year"@en ;
+    rdfs:subClassOf sm:AshResource ;
+    rdfs:subClassOf time:ProperInterval ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty gl:hasFiscalYear ;
+        owl:cardinality "1"^^xsd:nonNegativeInteger
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty gl:hasPeriodNumber ;
+        owl:cardinality "1"^^xsd:nonNegativeInteger
+    ] .
+
+gl:CashFlowReportCaption a owl:Class ;
+    rdfs:label "Cash Flow Report Caption"@en ;
+    rdfs:comment "Customizable captions for cash flow reporting"@en ;
+    rdfs:subClassOf sm:AshResource ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty gl:hasCashFlowMethod ;
+        owl:someValuesFrom gl:CashFlowMethod
+    ] .
+
+# ============================================================================
+# Batch Processing Classes
+# ============================================================================
+
+gl:BatchPeriodClosingSetup a owl:Class ;
+    rdfs:label "Batch Period Closing Setup"@en ;
+    rdfs:comment "Configuration for automated period closing processes"@en ;
+    rdfs:subClassOf sm:AshResource ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty gl:hasUserIdentifier ;
+        owl:cardinality "1"^^xsd:nonNegativeInteger
+    ] .
+
+gl:BatchTransferToGLSetup a owl:Class ;
+    rdfs:label "Batch Transfer to GL Setup"@en ;
+    rdfs:comment "Configuration for automated transfers to general ledger"@en ;
+    rdfs:subClassOf sm:AshResource ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty gl:hasJobName ;
+        owl:cardinality "1"^^xsd:nonNegativeInteger
+    ] .
+
+# ============================================================================
+# Consolidation Classes
+# ============================================================================
+
+gl:ConsolidationDailyExchangeRate a owl:Class ;
+    rdfs:label "Consolidation Daily Exchange Rate"@en ;
+    rdfs:comment "Daily exchange rates for consolidation purposes"@en ;
+    rdfs:subClassOf sm:AshResource ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty gl:hasCurrencyCode ;
+        owl:cardinality "1"^^xsd:nonNegativeInteger
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty gl:hasExchangeRate ;
+        owl:cardinality "1"^^xsd:nonNegativeInteger
+    ] .
+
+gl:ConsolidationExchangeRate a owl:Class ;
+    rdfs:label "Consolidation Exchange Rate"@en ;
+    rdfs:comment "Period exchange rates for consolidation"@en ;
+    rdfs:subClassOf sm:AshResource ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty gl:hasAverageExchangeRate ;
+        owl:cardinality "1"^^xsd:nonNegativeInteger
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty gl:hasClosingExchangeRate ;
+        owl:cardinality "1"^^xsd:nonNegativeInteger
+    ] .
+
+gl:FundAccountSegmentValue a owl:Class ;
+    rdfs:label "Fund Account Segment Value"@en ;
+    rdfs:comment "Segment values specific to fund accounting"@en ;
+    rdfs:subClassOf gl:AccountSegmentValue .
+
+# ============================================================================
+# Enumeration Classes
+# ============================================================================
+
+gl:AccountStatus a owl:Class ;
+    rdfs:label "Account Status"@en ;
+    rdfs:comment "The status of a chart of account"@en ;
+    owl:equivalentClass [
+        a owl:Class ;
+        owl:oneOf (gl:Active gl:Inactive)
+    ] .
+
+gl:AccountType a owl:Class ;
+    rdfs:label "Account Type"@en ;
+    rdfs:comment "The type of account for posting purposes"@en ;
+    owl:equivalentClass [
+        a owl:Class ;
+        owl:oneOf (gl:PostingAccount gl:AllocationAccount)
+    ] .
+
+gl:BatchStatus a owl:Class ;
+    rdfs:label "Batch Status"@en ;
+    rdfs:comment "The processing status of a journal entry batch"@en ;
+    owl:equivalentClass [
+        a owl:Class ;
+        owl:oneOf (gl:Unposted gl:Posted gl:Voided)
+    ] .
+
+gl:TransactionStatus a owl:Class ;
+    rdfs:label "Transaction Status"@en ;
+    rdfs:comment "The status of a general ledger transaction"@en ;
+    owl:equivalentClass [
+        a owl:Class ;
+        owl:oneOf (gl:Standard gl:Voided gl:Reversed)
+    ] .
+
+gl:RecurringCycle a owl:Class ;
+    rdfs:label "Recurring Cycle"@en ;
+    rdfs:comment "The frequency cycle for recurring journal entries"@en ;
+    owl:equivalentClass [
+        a owl:Class ;
+        owl:oneOf (gl:Weekly gl:Monthly gl:Bimonthly gl:Quarterly gl:SemiAnnually gl:Annually)
+    ] .
+
+gl:CashFlowMethod a owl:Class ;
+    rdfs:label "Cash Flow Method"@en ;
+    rdfs:comment "The method used for cash flow reporting"@en ;
+    owl:equivalentClass [
+        a owl:Class ;
+        owl:oneOf (gl:DirectMethod gl:IndirectMethod)
+    ] .
+
+gl:JournalEntryType a owl:Class ;
+    rdfs:label "Journal Entry Type"@en ;
+    rdfs:comment "The type of journal entry"@en ;
+    owl:equivalentClass [
+        a owl:Class ;
+        owl:oneOf (gl:StandardEntry gl:PriorYearAdjustment gl:RecurringTemplate)
+    ] .
+
+# ============================================================================
+# Event Classes (Commanded Integration)
+# ============================================================================
+
+gl:GeneralLedgerEvent a owl:Class ;
+    rdfs:label "General Ledger Event"@en ;
+    rdfs:comment "An event occurring in the general ledger domain"@en ;
+    rdfs:subClassOf event:Event ;
+    owl:disjointUnionOf (
+        gl:AccountCreatedEvent
+        gl:AccountUpdatedEvent
+        gl:JournalEntryPostedEvent
+        gl:BatchPostedEvent
+        gl:PeriodClosedEvent
+        gl:BudgetApprovedEvent
+        gl:TransferCompletedEvent
+    ) .
+
+gl:AccountCreatedEvent a owl:Class ;
+    rdfs:label "Account Created Event"@en ;
+    rdfs:subClassOf gl:GeneralLedgerEvent .
+
+gl:JournalEntryPostedEvent a owl:Class ;
+    rdfs:label "Journal Entry Posted Event"@en ;
+    rdfs:subClassOf gl:GeneralLedgerEvent .
+
+gl:BatchPostedEvent a owl:Class ;
+    rdfs:label "Batch Posted Event"@en ;
+    rdfs:subClassOf gl:GeneralLedgerEvent .
+
+gl:PeriodClosedEvent a owl:Class ;
+    rdfs:label "Period Closed Event"@en ;
+    rdfs:subClassOf gl:GeneralLedgerEvent .
+
+# ============================================================================
+# Agent Classes (Jido Integration)
+# ============================================================================
+
+gl:GeneralLedgerAgent a owl:Class ;
+    rdfs:label "General Ledger Agent"@en ;
+    rdfs:comment "An agent responsible for general ledger operations"@en ;
+    rdfs:subClassOf agent:Agent ;
+    owl:disjointUnionOf (
+        gl:PostingAgent
+        gl:ReconciliationAgent
+        gl:PeriodClosingAgent
+        gl:BudgetMonitoringAgent
+        gl:ConsolidationAgent
+    ) .
+
+gl:PostingAgent a owl:Class ;
+    rdfs:label "Posting Agent"@en ;
+    rdfs:comment "Agent responsible for posting journal entries"@en ;
+    rdfs:subClassOf gl:GeneralLedgerAgent .
+
+gl:ReconciliationAgent a owl:Class ;
+    rdfs:label "Reconciliation Agent"@en ;
+    rdfs:comment "Agent performing account reconciliation"@en ;
+    rdfs:subClassOf gl:GeneralLedgerAgent .
+
+gl:PeriodClosingAgent a owl:Class ;
+    rdfs:label "Period Closing Agent"@en ;
+    rdfs:comment "Agent managing fiscal period closings"@en ;
+    rdfs:subClassOf gl:GeneralLedgerAgent .
+
+# ============================================================================
+# Object Properties
+# ============================================================================
+
+# Account Relationships
+gl:belongsToCategory a owl:ObjectProperty ;
+    rdfs:label "belongs to category"@en ;
+    rdfs:domain gl:ChartOfAccount ;
+    rdfs:range gl:AccountCategory ;
+    rdfs:comment "Associates an account with its category"@en .
+
+gl:belongsToGroup a owl:ObjectProperty ;
+    rdfs:label "belongs to group"@en ;
+    rdfs:domain gl:ChartOfAccount ;
+    rdfs:range gl:AccountGroup ;
+    rdfs:comment "Associates an account with its group"@en .
+
+gl:hasAccountBalance a owl:ObjectProperty ;
+    rdfs:label "has account balance"@en ;
+    rdfs:domain gl:ChartOfAccount ;
+    rdfs:range gl:AccountBalance ;
+    owl:inverseOf gl:belongsToAccount ;
+    rdfs:comment "Relates an account to its balances"@en .
+
+gl:belongsToAccount a owl:ObjectProperty ;
+    rdfs:label "belongs to account"@en ;
+    rdfs:domain gl:AccountBalance ;
+    rdfs:range gl:ChartOfAccount ;
+    rdfs:comment "Associates a balance with its account"@en .
+
+# Journal Entry Relationships
+gl:containsJournalEntry a owl:ObjectProperty ;
+    rdfs:label "contains journal entry"@en ;
+    rdfs:domain gl:JournalEntryBatch ;
+    rdfs:range gl:JournalEntry ;
+    owl:inverseOf gl:belongsToBatch ;
+    rdfs:comment "Relates a batch to its journal entries"@en .
+
+gl:belongsToBatch a owl:ObjectProperty ;
+    rdfs:label "belongs to batch"@en ;
+    rdfs:domain gl:JournalEntry ;
+    rdfs:range gl:JournalEntryBatch ;
+    rdfs:comment "Associates a journal entry with its batch"@en .
+
+gl:hasJournalEntryLine a owl:ObjectProperty ;
+    rdfs:label "has journal entry line"@en ;
+    rdfs:domain gl:JournalEntry ;
+    rdfs:range gl:JournalEntryLine ;
+    owl:inverseOf gl:belongsToEntry ;
+    rdfs:comment "Relates a journal entry to its lines"@en .
+
+gl:belongsToEntry a owl:ObjectProperty ;
+    rdfs:label "belongs to entry"@en ;
+    rdfs:domain gl:JournalEntryLine ;
+    rdfs:range gl:JournalEntry ;
+    rdfs:comment "Associates a line with its journal entry"@en .
+
+gl:referencesAccount a owl:ObjectProperty ;
+    rdfs:label "references account"@en ;
+    rdfs:domain gl:JournalEntryLine ;
+    rdfs:range gl:ChartOfAccount ;
+    rdfs:comment "Links a journal entry line to an account"@en .
+
+# Budget Relationships
+gl:hasBudgetData a owl:ObjectProperty ;
+    rdfs:label "has budget data"@en ;
+    rdfs:domain gl:BudgetControl ;
+    rdfs:range gl:BudgetData ;
+    owl:inverseOf gl:belongsToBudgetControl ;
+    rdfs:comment "Relates a budget control to its data"@en .
+
+gl:belongsToBudgetControl a owl:ObjectProperty ;
+    rdfs:label "belongs to budget control"@en ;
+    rdfs:domain gl:BudgetData ;
+    rdfs:range gl:BudgetControl ;
+    rdfs:comment "Associates budget data with its control"@en .
+
+gl:budgetForAccount a owl:ObjectProperty ;
+    rdfs:label "budget for account"@en ;
+    rdfs:domain gl:BudgetData ;
+    rdfs:range gl:ChartOfAccount ;
+    rdfs:comment "Links budget data to an account"@en .
+
+# Supporting Relationships
+gl:hasAccountNote a owl:ObjectProperty ;
+    rdfs:label "has account note"@en ;
+    rdfs:domain gl:ChartOfAccount ;
+    rdfs:range gl:AccountNote ;
+    owl:inverseOf gl:attachedToAccount ;
+    rdfs:comment "Relates an account to its notes"@en .
+
+gl:attachedToAccount a owl:ObjectProperty ;
+    rdfs:label "attached to account"@en ;
+    rdfs:domain gl:AccountNote ;
+    rdfs:range gl:ChartOfAccount ;
+    rdfs:comment "Links a note to an account"@en .
+
+gl:hasAllocationDistribution a owl:ObjectProperty ;
+    rdfs:label "has allocation distribution"@en ;
+    rdfs:domain gl:ChartOfAccount ;
+    rdfs:range gl:AllocationDistribution ;
+    owl:inverseOf gl:distributesFromAccount ;
+    rdfs:comment "Relates an account to its allocation distributions"@en .
+
+gl:hasPostingDistribution a owl:ObjectProperty ;
+    rdfs:label "has posting distribution"@en ;
+    rdfs:domain gl:ChartOfAccount ;
+    rdfs:range gl:PostingDistribution ;
+    rdfs:comment "Relates an account to its posting distributions"@en .
+
+gl:distributesFromAccount a owl:ObjectProperty ;
+    rdfs:label "distributes from account"@en ;
+    rdfs:domain [
+        a owl:Class ;
+        owl:unionOf (gl:AllocationDistribution gl:PostingDistribution)
+    ] ;
+    rdfs:range gl:ChartOfAccount ;
+    rdfs:comment "Links a distribution to its source account"@en .
+
+# Period Relationships
+gl:occursInPeriod a owl:ObjectProperty ;
+    rdfs:label "occurs in period"@en ;
+    rdfs:domain [
+        a owl:Class ;
+        owl:unionOf (gl:JournalEntry gl:GeneralLedgerTransfer gl:GeneralLedgerTransaction)
+    ] ;
+    rdfs:range gl:FiscalPeriod ;
+    rdfs:comment "Associates a transaction with its fiscal period"@en .
+
+# Event Relationships
+gl:triggersGLEvent a owl:ObjectProperty ;
+    rdfs:label "triggers GL event"@en ;
+    rdfs:domain [
+        a owl:Class ;
+        owl:unionOf (gl:JournalEntryBatch gl:FiscalPeriod gl:BudgetControl)
+    ] ;
+    rdfs:range gl:GeneralLedgerEvent ;
+    rdfs:subPropertyOf event:produces ;
+    rdfs:comment "Relates GL operations to events they produce"@en .
+
+# Agent Relationships
+gl:monitorsAccount a owl:ObjectProperty ;
+    rdfs:label "monitors account"@en ;
+    rdfs:domain gl:GeneralLedgerAgent ;
+    rdfs:range gl:ChartOfAccount ;
+    rdfs:comment "Associates an agent with accounts it monitors"@en .
+
+gl:processesBatch a owl:ObjectProperty ;
+    rdfs:label "processes batch"@en ;
+    rdfs:domain gl:PostingAgent ;
+    rdfs:range gl:JournalEntryBatch ;
+    rdfs:comment "Relates a posting agent to batches it processes"@en .
+
+# ============================================================================
+# Data Properties
+# ============================================================================
+
+# Identifiers
+gl:hasAccountIdentifier a owl:DatatypeProperty, owl:FunctionalProperty ;
+    rdfs:label "has account identifier"@en ;
+    rdfs:domain gl:ChartOfAccount ;
+    rdfs:range xsd:string ;
+    rdfs:comment "Unique identifier for a chart of account"@en .
+
+gl:hasBatchNumber a owl:DatatypeProperty, owl:FunctionalProperty ;
+    rdfs:label "has batch number"@en ;
+    rdfs:domain gl:JournalEntryBatch ;
+    rdfs:range xsd:string ;
+    rdfs:comment "Unique batch number"@en .
+
+gl:hasJournalIdentifier a owl:DatatypeProperty, owl:FunctionalProperty ;
+    rdfs:label "has journal identifier"@en ;
+    rdfs:domain gl:JournalEntry ;
+    rdfs:range xsd:string ;
+    rdfs:comment "Unique identifier for a journal entry"@en .
+
+gl:hasBudgetIdentifier a owl:DatatypeProperty, owl:FunctionalProperty ;
+    rdfs:label "has budget identifier"@en ;
+    rdfs:domain gl:BudgetControl ;
+    rdfs:range xsd:string ;
+    rdfs:comment "Unique identifier for a budget control"@en .
+
+# Descriptions
+gl:hasAccountDescription a owl:DatatypeProperty ;
+    rdfs:label "has account description"@en ;
+    rdfs:domain gl:ChartOfAccount ;
+    rdfs:range xsd:string ;
+    rdfs:comment "Description of an account"@en .
+
+gl:hasForeignLanguageDescription a owl:DatatypeProperty ;
+    rdfs:label "has foreign language description"@en ;
+    rdfs:domain [
+        a owl:Class ;
+        owl:unionOf (gl:ChartOfAccount gl:AccountCategory gl:AccountGroup)
+    ] ;
+    rdfs:range xsd:string ;
+    rdfs:comment "Description in a foreign language"@en .
+
+# Financial Amounts
+gl:hasDebitAmount a owl:DatatypeProperty ;
+    rdfs:label "has debit amount"@en ;
+    rdfs:domain gl:JournalEntryLine ;
+    rdfs:range xsd:decimal ;
+    rdfs:comment "Debit amount for a journal entry line"@en .
+
+gl:hasCreditAmount a owl:DatatypeProperty ;
+    rdfs:label "has credit amount"@en ;
+    rdfs:domain gl:JournalEntryLine ;
+    rdfs:range xsd:decimal ;
+    rdfs:comment "Credit amount for a journal entry line"@en .
+
+gl:hasJournalAmount a owl:DatatypeProperty ;
+    rdfs:label "has journal amount"@en ;
+    rdfs:domain gl:JournalEntry ;
+    rdfs:range xsd:decimal ;
+    rdfs:comment "Total amount of a journal entry"@en .
+
+gl:hasControlTotalAmount a owl:DatatypeProperty ;
+    rdfs:label "has control total amount"@en ;
+    rdfs:domain gl:JournalEntryBatch ;
+    rdfs:range xsd:decimal ;
+    rdfs:comment "Control total for batch validation"@en .
+
+gl:hasBatchTotalAmount a owl:DatatypeProperty ;
+    rdfs:label "has batch total amount"@en ;
+    rdfs:domain gl:JournalEntryBatch ;
+    rdfs:range xsd:decimal ;
+    rdfs:comment "Actual total of batch entries"@en .
+
+# Period Properties
+gl:hasFiscalYear a owl:DatatypeProperty ;
+    rdfs:label "has fiscal year"@en ;
+    rdfs:domain [
+        a owl:Class ;
+        owl:unionOf (gl:AccountBalance gl:FiscalPeriod gl:BudgetControl)
+    ] ;
+    rdfs:range xsd:string ;
+    rdfs:comment "Fiscal year identifier"@en .
+
+gl:hasPeriodNumber a owl:DatatypeProperty ;
+    rdfs:label "has period number"@en ;
+    rdfs:domain gl:FiscalPeriod ;
+    rdfs:range xsd:string ;
+    rdfs:comment "Period number within fiscal year"@en .
+
+gl:hasPeriodBeginDate a owl:DatatypeProperty ;
+    rdfs:label "has period begin date"@en ;
+    rdfs:domain gl:FiscalPeriod ;
+    rdfs:range xsd:date ;
+    rdfs:comment "Start date of fiscal period"@en .
+
+gl:hasPeriodEndDate a owl:DatatypeProperty ;
+    rdfs:label "has period end date"@en ;
+    rdfs:domain gl:FiscalPeriod ;
+    rdfs:range xsd:date ;
+    rdfs:comment "End date of fiscal period"@en .
+
+# Currency and Exchange Properties
+gl:hasCurrencyCode a owl:DatatypeProperty ;
+    rdfs:label "has currency code"@en ;
+    rdfs:domain [
+        a owl:Class ;
+        owl:unionOf (gl:JournalEntryBatch gl:JournalEntry gl:ConsolidationExchangeRate)
+    ] ;
+    rdfs:range xsd:string ;
+    rdfs:comment "ISO currency code"@en .
+
+gl:hasExchangeRate a owl:DatatypeProperty ;
+    rdfs:label "has exchange rate"@en ;
+    rdfs:domain [
+        a owl:Class ;
+        owl:unionOf (gl:JournalEntry gl:ConsolidationDailyExchangeRate)
+    ] ;
+    rdfs:range xsd:decimal ;
+    rdfs:comment "Exchange rate for currency conversion"@en .
+
+# Boolean Properties
+gl:isPosted a owl:DatatypeProperty ;
+    rdfs:label "is posted"@en ;
+    rdfs:domain gl:JournalEntryBatch ;
+    rdfs:range xsd:boolean ;
+    rdfs:comment "Whether the batch has been posted"@en .
+
+gl:isCashAccount a owl:DatatypeProperty ;
+    rdfs:label "is cash account"@en ;
+    rdfs:domain gl:ChartOfAccount ;
+    rdfs:range xsd:boolean ;
+    rdfs:comment "Whether the account is a cash account"@en .
+
+gl:allowAutoDistribution a owl:DatatypeProperty ;
+    rdfs:label "allow auto distribution"@en ;
+    rdfs:domain gl:ChartOfAccount ;
+    rdfs:range xsd:boolean ;
+    rdfs:comment "Whether automatic distribution is allowed"@en .
+
+gl:includeYearEndAdjustments a owl:DatatypeProperty ;
+    rdfs:label "include year end adjustments"@en ;
+    rdfs:domain gl:BudgetControl ;
+    rdfs:range xsd:boolean ;
+    rdfs:comment "Whether to include year-end adjustments in budget"@en .
+
+# Sequence and Level Properties
+gl:hasSequenceNumber a owl:DatatypeProperty ;
+    rdfs:label "has sequence number"@en ;
+    rdfs:domain [
+        a owl:Class ;
+        owl:unionOf (gl:JournalEntryLine gl:GeneralLedgerTransfer gl:GeneralLedgerTransaction)
+    ] ;
+    rdfs:range xsd:integer ;
+    rdfs:comment "Sequential ordering number"@en .
+
+gl:hasReportingLevel a owl:DatatypeProperty ;
+    rdfs:label "has reporting level"@en ;
+    rdfs:domain gl:AccountGroup ;
+    rdfs:range xsd:integer ;
+    rdfs:comment "Hierarchical reporting level (1-4)"@en .
+
+# Module Transfer Flags
+gl:hasARSummaryTransferEnabled a owl:DatatypeProperty ;
+    rdfs:label "has AR summary transfer enabled"@en ;
+    rdfs:domain gl:ChartOfAccount ;
+    rdfs:range xsd:boolean ;
+    rdfs:comment "Whether Accounts Receivable summary transfer is enabled"@en .
+
+gl:hasAPSummaryTransferEnabled a owl:DatatypeProperty ;
+    rdfs:label "has AP summary transfer enabled"@en ;
+    rdfs:domain gl:ChartOfAccount ;
+    rdfs:range xsd:boolean ;
+    rdfs:comment "Whether Accounts Payable summary transfer is enabled"@en .
+
+# System Configuration Properties
+gl:hasCurrentFiscalYear a owl:DatatypeProperty ;
+    rdfs:label "has current fiscal year"@en ;
+    rdfs:domain gl:GeneralLedgerSystem ;
+    rdfs:range xsd:string ;
+    rdfs:comment "Current fiscal year for the GL system"@en .
+
+gl:hasRetainedEarningsAccount a owl:DatatypeProperty ;
+    rdfs:label "has retained earnings account"@en ;
+    rdfs:domain gl:GeneralLedgerSystem ;
+    rdfs:range xsd:string ;
+    rdfs:comment "Account identifier for retained earnings"@en .
+
+gl:useMultiCurrency a owl:DatatypeProperty ;
+    rdfs:label "use multi currency"@en ;
+    rdfs:domain gl:GeneralLedgerSystem ;
+    rdfs:range xsd:boolean ;
+    rdfs:comment "Whether multi-currency is enabled"@en .
+
+gl:useAutoBatchNumbering a owl:DatatypeProperty ;
+    rdfs:label "use auto batch numbering"@en ;
+    rdfs:domain gl:GeneralLedgerSystem ;
+    rdfs:range xsd:boolean ;
+    rdfs:comment "Whether automatic batch numbering is enabled"@en .
+
+# ============================================================================
+# Constraints and Axioms
+# ============================================================================
+
+# Disjointness Axioms
+[] a owl:AllDisjointClasses ;
+    owl:members (
+        gl:ChartOfAccount
+        gl:JournalEntry
+        gl:JournalEntryBatch
+        gl:BudgetControl
+        gl:FiscalPeriod
+    ) .
+
+[] a owl:AllDisjointClasses ;
+    owl:members (
+        gl:PostingAgent
+        gl:ReconciliationAgent
+        gl:PeriodClosingAgent
+        gl:BudgetMonitoringAgent
+        gl:ConsolidationAgent
+    ) .
+
+# Cardinality Constraints
+gl:JournalEntry rdfs:subClassOf [
+    a owl:Restriction ;
+    owl:onProperty gl:hasJournalEntryLine ;
+    owl:minCardinality "2"^^xsd:nonNegativeInteger
+] ;
+rdfs:comment "A journal entry must have at least two lines (debit and credit)"@en .
+
+gl:JournalEntryBatch rdfs:subClassOf [
+    a owl:Restriction ;
+    owl:onProperty gl:containsJournalEntry ;
+    owl:minCardinality "1"^^xsd:nonNegativeInteger
+] ;
+rdfs:comment "A batch must contain at least one journal entry"@en .
+
+# Functional Property Chains
+gl:transitiveAccountGrouping a owl:ObjectProperty ;
+    rdfs:label "transitive account grouping"@en ;
+    owl:propertyChainAxiom (gl:belongsToGroup gl:belongsToCategory) ;
+    rdfs:comment "Transitive grouping through categories"@en .
+
+# Inverse Properties
+gl:hasJournalEntry owl:inverseOf gl:belongsToBatch .
+gl:accountReferencedBy owl:inverseOf gl:referencesAccount .
+gl:periodContains owl:inverseOf gl:occursInPeriod .
+
+# ============================================================================
+# SWRL Rules (Optional - for reasoning)
+# ============================================================================
+
+# Rule: Journal entry lines must balance (debits = credits)
+# JournalEntry(?je) ∧ hasJournalEntryLine(?je, ?line) ∧ 
+# hasDebitAmount(?line, ?debit) ∧ hasCreditAmount(?line, ?credit)
+# → swrlb:equal(sum(?debit), sum(?credit))
+
+# Rule: Posted batches cannot be modified
+# JournalEntryBatch(?batch) ∧ isPosted(?batch, true)
+# → hasBatchStatus(?batch, Posted)
+
+# Rule: Account balances must be updated when journal entries are posted
+# JournalEntryLine(?line) ∧ referencesAccount(?line, ?account) ∧
+# belongsToEntry(?line, ?entry) ∧ belongsToBatch(?entry, ?batch) ∧
+# isPosted(?batch, true) → triggers AccountBalanceUpdate(?account)
+
+# ============================================================================
+# Annotations
+# ============================================================================
+
+gl:ChartOfAccount rdfs:seeAlso <https://spec.edmcouncil.org/fibo/ontology/FND/Accounting/> ;
+    rdfs:isDefinedBy <http://accountex.org/ontology/general-ledger> .
+
+gl:GeneralLedgerAgent rdfs:seeAlso <https://github.com/agentjido/jido> ;
+    rdfs:isDefinedBy <http://accountex.org/ontology/general-ledger> .
+
+gl:GeneralLedgerEvent rdfs:seeAlso <https://github.com/commanded/commanded> ;
+    rdfs:isDefinedBy <http://accountex.org/ontology/general-ledger> .
