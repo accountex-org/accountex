@@ -6,29 +6,31 @@
 
 #### Work Order Initialization Logic
 
-- **Creation Methods**: System supports three primary creation pathways:
-  - Manual creation with full parameter control
-  - Copy from existing work order with automatic field population
-  - Generation from open sales orders with quantity and specification inheritance
-- **Master Item Configuration**: Each work order can contain unlimited master items with independent production parameters
-- **Backorder Integration**: System automatically pulls backorder quantities from sales orders as default manufacturing quantities
-- **Hold Management**: Work orders can be placed on hold status pending component availability
+**Creation Methods**: System supports three primary creation pathways:
+- Manual creation with full parameter control
+- Copy from existing work order with automatic field population  
+- Generation from open sales orders with quantity and specification inheritance
+
+#### Work Order Creation Business Rules
+
+**BR-MI-023:** Each work order can contain unlimited master items with independent production parameters
+**BR-MI-024:** System automatically pulls backorder quantities from sales orders as default manufacturing quantities
+**BR-MI-025:** Work orders can be placed on hold status pending component availability
 
 #### Work Order Structure
 
-- **Multi-Level Job Hierarchy**: Each master item explodes into unlimited job levels with parent-child relationships
-- **Step-Based Manufacturing**: Components assigned sequential step numbers matching actual production flow
-- **Production Scheduling**: Support for multiple start dates and request dates per work order line item
-- **Resource Allocation**: Automatic allocation of raw materials and subassemblies upon work order explosion
+**BR-MI-026:** Each master item explodes into unlimited job levels with parent-child relationships
+**BR-MI-027:** Components assigned sequential step numbers matching actual production flow
+**BR-MI-028:** Support for multiple start dates and request dates per work order line item
+**BR-MI-029:** Automatic allocation of raw materials and subassemblies upon work order explosion
 
 #### Work Order State Management
 
-Work orders maintain the following state transitions:
+**Work Order State Transitions:** Created → Exploded → WIP Posted → In Process → Finished → Closed
 
-- **Created** → **Exploded** → **WIP Posted** → **In Process** → **Finished** → **Closed**
-- **Void States**: Can be voided entirely or up to specific step numbers
-- **Amendment Capability**: Component lists modifiable after explosion
-- **Status Tracking**: Real-time status monitoring through multiple report types
+**BR-MI-030:** Work orders can be voided entirely or up to specific step numbers
+**BR-MI-031:** Component lists modifiable after explosion
+**BR-MI-032:** Real-time status monitoring through multiple report types
 
 ### 1.2 Bill of Materials (BOM) Handling
 
@@ -41,21 +43,17 @@ Work orders maintain the following state transitions:
 
 #### Component Management Rules
 
-- **Component Types Supported**:
-  - Inventory items (raw materials, subassemblies)
-  - Machine resources with cost and time tracking
-  - Labor resources with skill and rate management
-  - Non-stock items for services and intangibles
-- **Substitution Logic**: Multiple substitute items definable for each component
-- **Step Assignment**: Components assigned to specific manufacturing steps for sequencing
-- **Manufacturing Instructions**: Unlimited notes and instructions stored with each BOM
+**BR-MI-011:** BOM components support inventory items, machine resources, labor resources, and non-stock items
+**BR-MI-012:** Multiple substitute items definable for each component
+**BR-MI-013:** Components assigned to specific manufacturing steps for sequencing
+**BR-MI-014:** Manufacturing instructions stored with each BOM
 
 #### BOM Maintenance Logic
 
-- **Dynamic Updates**: BOMs updatable without affecting existing work orders
-- **Copy Functionality**: Components and entire BOMs copyable within or across companies
-- **Batch Replacement**: Simultaneous replacement of specific components across multiple BOMs
-- **Specification Integration**: Separate BOMs for each item specification combination
+**BR-MI-015:** BOMs updatable without affecting existing work orders
+**BR-MI-016:** Components and entire BOMs copyable within or across companies
+**BR-MI-017:** Simultaneous replacement of specific components across multiple BOMs
+**BR-MI-018:** Separate BOMs for each item specification combination
 
 ### 1.3 Work Order Explosion Process
 
@@ -103,10 +101,10 @@ end
 
 #### Explosion Control Features
 
-- **Selective Explosion**: Can explode entire work orders or specific line items
-- **Step-Level Control**: Explosion controllable to specific step numbers
-- **Material Requirements Planning**: Automatic generation of material requirement projections
-- **Subassembly Optimization**: System determines make vs. buy decisions for subassemblies
+**BR-MI-019:** Can explode entire work orders or specific line items
+**BR-MI-020:** Explosion controllable to specific step numbers
+**BR-MI-021:** Automatic generation of material requirement projections
+**BR-MI-022:** System determines make vs. buy decisions for subassemblies
 
 ### 1.4 Work-in-Process (WIP) Posting
 
@@ -243,10 +241,10 @@ end
 
 #### Complex Product Management
 
-- **Multi-Level Costing**: Costs propagate through all component levels
-- **Lead Time Cascading**: Cumulative lead times calculated across levels
-- **Resource Scheduling**: Machine and labor scheduled considering all levels
-- **Selective Manufacturing**: Choose to manufacture or use existing inventory at each level
+**BR-MI-007:** Costs propagate through all component levels
+**BR-MI-008:** Cumulative lead times calculated across levels
+**BR-MI-009:** Machine and labor scheduled considering all levels
+**BR-MI-010:** Choose to manufacture or use existing inventory at each level
 
 ## 2. Master Data Management
 
@@ -519,9 +517,9 @@ end
 
 #### State Validation Rules
 
-- Parent items cannot complete until child components finish
-- WIP posting required before marking in-process
-- Quality hold prevents automatic closure
+**BR-MI-001:** Parent items cannot complete until child components finish
+**BR-MI-002:** WIP posting required before marking in-process
+**BR-MI-003:** Quality hold prevents automatic closure
 
 ### 3.2 Component Allocation and Consumption
 
@@ -558,9 +556,9 @@ end
 
 #### Consumption Tracking
 
-- **Real-time Updates**: Inventory levels adjusted immediately upon consumption
-- **Scrap Recording**: Track waste and remnants during production
-- **Lot Tracking**: Maintain lot genealogy through production
+**BR-MI-004:** Inventory levels adjusted immediately upon consumption
+**BR-MI-005:** Track waste and remnants during production
+**BR-MI-006:** Maintain lot genealogy through production
 
 ### 3.3 Resource Scheduling
 

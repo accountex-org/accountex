@@ -328,7 +328,7 @@ defmodule Accountex.Manufacturing.SchedulingConstraints do
   end
   
   defp validate_dependency_constraint(work_order) do
-    # Child jobs must complete before parent jobs
+    # BR-MI-033: Child jobs must complete before parent jobs
     work_order.job_hierarchy
     |> validate_job_dependencies()
   end
@@ -597,6 +597,15 @@ end
 ```
 
 ### 7.2 Validation Parameters
+
+**Manufacturing Validation Business Rules:**
+
+**BR-MI-034:** Enforce component availability checking by default
+**BR-MI-035:** Validate resource capacity by default
+**BR-MI-036:** Approval required for variances exceeding threshold
+**BR-MI-037:** Prevent negative inventory by default
+**BR-MI-038:** Serial tracking configurable per item type
+**BR-MI-039:** Lot tracking configurable per item type
 
 ```elixir
 defmodule Accountex.Manufacturing.ValidationSettings do
