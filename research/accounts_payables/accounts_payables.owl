@@ -1,0 +1,995 @@
+@prefix : <http://accountex.org/ontology/accounts-payables#> .
+@prefix ap: <http://accountex.org/ontology/accounts-payables#> .
+@prefix core: <http://accountex.org/ontology/core#> .
+@prefix agent: <http://accountex.org/ontology/agent#> .
+@prefix event: <http://accountex.org/ontology/event#> .
+@prefix mod: <http://accountex.org/ontology/module#> .
+@prefix sm: <http://accountex.org/ontology/system-manager#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix xml: <http://www.w3.org/XML/1998/namespace> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix foaf: <http://xmlns.com/foaf/0.1/> .
+@prefix dcterms: <http://purl.org/dc/terms/> .
+@prefix schema: <https://schema.org/> .
+@prefix fibo-fnd: <https://spec.edmcouncil.org/fibo/ontology/FND/> .
+@prefix fibo-fbc: <https://spec.edmcouncil.org/fibo/ontology/FBC/> .
+@prefix time: <http://www.w3.org/2006/time#> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
+@prefix gr: <http://purl.org/goodrelations/v1#> .
+
+# ============================================================================
+# Ontology Declaration
+# ============================================================================
+
+<http://accountex.org/ontology/accounts-payables> a owl:Ontology ;
+    owl:versionIRI <http://accountex.org/ontology/accounts-payables/1.0> ;
+    dcterms:title "Accountex Accounts Payables Domain Ontology"@en ;
+    dcterms:description "OWL ontology for the Accounts Payables domain of an Elixir-based accounting and ERP system using Ash framework, Jido agents, and Commanded event sourcing"@en ;
+    dcterms:creator "Accountex Development Team" ;
+    dcterms:created "2025-01-01"^^xsd:date ;
+    dcterms:license <http://opensource.org/licenses/MIT> ;
+    owl:imports <http://xmlns.com/foaf/0.1/> ,
+                <http://purl.org/dc/terms/> ,
+                <http://www.w3.org/2006/time> ,
+                <http://www.w3.org/ns/prov> ,
+                <http://purl.org/goodrelations/v1> ,
+                <http://accountex.org/ontology/system-manager> ;
+    rdfs:comment "This ontology models the Accounts Payables domain for vendor management, purchase invoicing, payment processing, and financial compliance"@en .
+
+# ============================================================================
+# Core Vendor Management Classes
+# ============================================================================
+
+ap:VendorAccount a owl:Class ;
+    rdfs:label "Vendor Account"@en ;
+    rdfs:comment "Represents a vendor or supplier entity with whom the organization conducts business"@en ;
+    rdfs:subClassOf gr:BusinessEntity ;
+    rdfs:subClassOf sm:AshResource ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ap:hasVendorIdentificationNumber ;
+        owl:cardinality "1"^^xsd:nonNegativeInteger
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ap:hasCompanyLegalName ;
+        owl:cardinality "1"^^xsd:nonNegativeInteger
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ap:hasVendorAccountStatus ;
+        owl:someValuesFrom ap:VendorAccountStatus
+    ] .
+
+ap:VendorMailingAddress a owl:Class ;
+    rdfs:label "Vendor Mailing Address"@en ;
+    rdfs:comment "Alternative mailing address for vendor correspondence"@en ;
+    rdfs:subClassOf schema:PostalAddress ;
+    rdfs:subClassOf sm:AshResource ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ap:belongsToVendor ;
+        owl:someValuesFrom ap:VendorAccount
+    ] .
+
+ap:VendorContactPerson a owl:Class ;
+    rdfs:label "Vendor Contact Person"@en ;
+    rdfs:comment "Individual contact person associated with a vendor account"@en ;
+    rdfs:subClassOf foaf:Person ;
+    rdfs:subClassOf sm:AshResource ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ap:representingVendor ;
+        owl:someValuesFrom ap:VendorAccount
+    ] .
+
+# ============================================================================
+# Invoice Management Classes
+# ============================================================================
+
+ap:PurchaseInvoice a owl:Class ;
+    rdfs:label "Purchase Invoice"@en ;
+    rdfs:comment "A bill or invoice received from a vendor for goods or services"@en ;
+    rdfs:subClassOf fibo-fbc:Invoice ;
+    rdfs:subClassOf sm:AshResource ;
+    rdfs:subClassOf event:Aggregate ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ap:hasInvoiceControlNumber ;
+        owl:cardinality "1"^^xsd:nonNegativeInteger
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ap:fromVendor ;
+        owl:someValuesFrom ap:VendorAccount
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ap:hasInvoicePaymentStatus ;
+        owl:someValuesFrom ap:InvoicePaymentStatus
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ap:hasInvoiceApprovalStatus ;
+        owl:someValuesFrom ap:InvoiceApprovalStatus
+    ] .
+
+ap:InvoiceGeneralLedgerDistribution a owl:Class ;
+    rdfs:label "Invoice General Ledger Distribution"@en ;
+    rdfs:comment "Allocation of invoice amounts to general ledger accounts"@en ;
+    rdfs:subClassOf sm:AshResource ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ap:distributesPurchaseInvoice ;
+        owl:someValuesFrom ap:PurchaseInvoice
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ap:hasGeneralLedgerAccount ;
+        owl:cardinality "1"^^xsd:nonNegativeInteger
+    ] .
+
+ap:InvoiceFinanceCharge a owl:Class ;
+    rdfs:label "Invoice Finance Charge"@en ;
+    rdfs:comment "Late payment charges or interest accrued on overdue invoices"@en ;
+    rdfs:subClassOf fibo-fbc:FinanceCharge ;
+    rdfs:subClassOf sm:AshResource ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ap:chargedOnInvoice ;
+        owl:someValuesFrom ap:PurchaseInvoice
+    ] .
+
+# ============================================================================
+# Payment Management Classes
+# ============================================================================
+
+ap:VendorPaymentCheck a owl:Class ;
+    rdfs:label "Vendor Payment Check"@en ;
+    rdfs:comment "A payment issued to a vendor via check or electronic transfer"@en ;
+    rdfs:subClassOf fibo-fbc:Payment ;
+    rdfs:subClassOf sm:AshResource ;
+    rdfs:subClassOf event:Aggregate ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ap:hasCheckSequenceNumber ;
+        owl:cardinality "1"^^xsd:nonNegativeInteger
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ap:paidToVendor ;
+        owl:someValuesFrom ap:VendorAccount
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ap:hasCheckProcessingStatus ;
+        owl:someValuesFrom ap:CheckProcessingStatus
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ap:hasBankReconciliationStatus ;
+        owl:someValuesFrom ap:BankReconciliationStatus
+    ] .
+
+ap:CheckInvoiceApplication a owl:Class ;
+    rdfs:label "Check Invoice Application"@en ;
+    rdfs:comment "Application of payment check amounts to specific invoices"@en ;
+    rdfs:subClassOf sm:AshResource ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ap:appliesPaymentCheck ;
+        owl:someValuesFrom ap:VendorPaymentCheck
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ap:appliesToInvoice ;
+        owl:someValuesFrom ap:PurchaseInvoice
+    ] .
+
+ap:ElectronicFundsTransfer a owl:Class ;
+    rdfs:label "Electronic Funds Transfer"@en ;
+    rdfs:comment "Electronic payment method for vendor payments"@en ;
+    rdfs:subClassOf fibo-fbc:ElectronicPayment ;
+    rdfs:subClassOf sm:AshResource ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ap:processesPaymentCheck ;
+        owl:someValuesFrom ap:VendorPaymentCheck
+    ] .
+
+# ============================================================================
+# Tax Reporting Classes
+# ============================================================================
+
+ap:TaxForm1099Report a owl:Class ;
+    rdfs:label "Tax Form 1099 Report"@en ;
+    rdfs:comment "IRS Form 1099 tax reporting for vendor payments"@en ;
+    rdfs:subClassOf sm:AshResource ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ap:reportsForVendor ;
+        owl:someValuesFrom ap:VendorAccount
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ap:hasTaxYear ;
+        owl:cardinality "1"^^xsd:nonNegativeInteger
+    ] .
+
+ap:TaxForm1099Update a owl:Class ;
+    rdfs:label "Tax Form 1099 Update"@en ;
+    rdfs:comment "Updates or corrections to 1099 tax forms"@en ;
+    rdfs:subClassOf sm:AshResource ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ap:updatesTaxForm ;
+        owl:someValuesFrom ap:TaxForm1099Report
+    ] .
+
+# ============================================================================
+# Recurring Transaction Classes
+# ============================================================================
+
+ap:RecurringInvoiceTemplate a owl:Class ;
+    rdfs:label "Recurring Invoice Template"@en ;
+    rdfs:comment "Template for automatically generating recurring invoices"@en ;
+    rdfs:subClassOf sm:AshResource ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ap:hasTemplateReferenceCode ;
+        owl:cardinality "1"^^xsd:nonNegativeInteger
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ap:forVendor ;
+        owl:someValuesFrom ap:VendorAccount
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ap:hasRecurrenceFrequency ;
+        owl:someValuesFrom ap:RecurrenceFrequency
+    ] .
+
+ap:RecurringInvoiceDistribution a owl:Class ;
+    rdfs:label "Recurring Invoice Distribution"@en ;
+    rdfs:comment "General ledger distribution for recurring invoice templates"@en ;
+    rdfs:subClassOf sm:AshResource ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ap:partOfTemplate ;
+        owl:someValuesFrom ap:RecurringInvoiceTemplate
+    ] .
+
+# ============================================================================
+# Purchase Order Matching Classes
+# ============================================================================
+
+ap:PurchaseOrderAccrual a owl:Class ;
+    rdfs:label "Purchase Order Accrual"@en ;
+    rdfs:comment "Accrual entries for purchase orders pending invoice receipt"@en ;
+    rdfs:subClassOf sm:AshResource ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ap:matchesWithInvoice ;
+        owl:someValuesFrom ap:PurchaseInvoice
+    ] .
+
+ap:PurchaseOrderAccrualQuantity a owl:Class ;
+    rdfs:label "Purchase Order Accrual Quantity"@en ;
+    rdfs:comment "Quantity tracking for purchase order accruals"@en ;
+    rdfs:subClassOf sm:AshResource ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ap:tracksAccrual ;
+        owl:someValuesFrom ap:PurchaseOrderAccrual
+    ] .
+
+# ============================================================================
+# System Configuration Class
+# ============================================================================
+
+ap:SystemConfiguration a owl:Class ;
+    rdfs:label "Accounts Payables System Configuration"@en ;
+    rdfs:comment "Configuration settings specific to the Accounts Payables module"@en ;
+    rdfs:subClassOf sm:SystemConfiguration ;
+    rdfs:subClassOf sm:AshResource ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ap:hasConfigurationName ;
+        owl:cardinality "1"^^xsd:nonNegativeInteger
+    ] .
+
+# ============================================================================
+# Status and State Enumerations
+# ============================================================================
+
+ap:VendorAccountStatus a owl:Class ;
+    rdfs:label "Vendor Account Status"@en ;
+    rdfs:comment "Current status of a vendor account"@en ;
+    owl:equivalentClass [
+        a owl:Class ;
+        owl:oneOf (ap:Active ap:Inactive ap:Suspended ap:PendingApproval)
+    ] .
+
+ap:InvoicePaymentStatus a owl:Class ;
+    rdfs:label "Invoice Payment Status"@en ;
+    rdfs:comment "Payment status of a purchase invoice"@en ;
+    owl:equivalentClass [
+        a owl:Class ;
+        owl:oneOf (ap:Unpaid ap:PartiallyPaid ap:Paid ap:Voided ap:Cancelled)
+    ] .
+
+ap:InvoiceApprovalStatus a owl:Class ;
+    rdfs:label "Invoice Approval Status"@en ;
+    rdfs:comment "Approval workflow status of a purchase invoice"@en ;
+    owl:equivalentClass [
+        a owl:Class ;
+        owl:oneOf (ap:Draft ap:PendingApproval ap:Approved ap:Rejected)
+    ] .
+
+ap:CheckProcessingStatus a owl:Class ;
+    rdfs:label "Check Processing Status"@en ;
+    rdfs:comment "Processing status of a vendor payment check"@en ;
+    owl:equivalentClass [
+        a owl:Class ;
+        owl:oneOf (ap:Printed ap:Manual ap:Electronic ap:CheckVoided)
+    ] .
+
+ap:BankReconciliationStatus a owl:Class ;
+    rdfs:label "Bank Reconciliation Status"@en ;
+    rdfs:comment "Bank reconciliation status of a payment check"@en ;
+    owl:equivalentClass [
+        a owl:Class ;
+        owl:oneOf (ap:Outstanding ap:Cleared ap:ReconciliationVoided ap:ReconciliationCancelled)
+    ] .
+
+ap:RecurrenceFrequency a owl:Class ;
+    rdfs:label "Recurrence Frequency"@en ;
+    rdfs:comment "Frequency of recurring invoice generation"@en ;
+    owl:equivalentClass [
+        a owl:Class ;
+        owl:oneOf (ap:Monthly ap:Quarterly ap:SemiAnnually ap:Annually)
+    ] .
+
+ap:ApplicationType a owl:Class ;
+    rdfs:label "Application Type"@en ;
+    rdfs:comment "Type of payment application"@en ;
+    owl:equivalentClass [
+        a owl:Class ;
+        owl:oneOf (ap:Payment ap:Prepayment ap:CreditMemo)
+    ] .
+
+# ============================================================================
+# Agent Classes for Accounts Payables
+# ============================================================================
+
+agent:AccountsPayablesAgent a owl:Class ;
+    rdfs:label "Accounts Payables Agent"@en ;
+    rdfs:comment "Specialized agent for accounts payables operations"@en ;
+    rdfs:subClassOf agent:SystemAgent ;
+    owl:disjointUnionOf (
+        agent:InvoiceProcessingAgent
+        agent:PaymentProcessingAgent
+        agent:VendorManagementAgent
+        agent:TaxComplianceAgent
+        agent:ReconciliationAgent
+    ) .
+
+agent:InvoiceProcessingAgent a owl:Class ;
+    rdfs:label "Invoice Processing Agent"@en ;
+    rdfs:comment "Agent responsible for processing and validating purchase invoices"@en ;
+    rdfs:subClassOf agent:AccountsPayablesAgent .
+
+agent:PaymentProcessingAgent a owl:Class ;
+    rdfs:label "Payment Processing Agent"@en ;
+    rdfs:comment "Agent handling vendor payment processing and scheduling"@en ;
+    rdfs:subClassOf agent:AccountsPayablesAgent .
+
+agent:VendorManagementAgent a owl:Class ;
+    rdfs:label "Vendor Management Agent"@en ;
+    rdfs:comment "Agent managing vendor onboarding and relationship management"@en ;
+    rdfs:subClassOf agent:AccountsPayablesAgent .
+
+agent:TaxComplianceAgent a owl:Class ;
+    rdfs:label "Tax Compliance Agent"@en ;
+    rdfs:comment "Agent ensuring tax compliance and 1099 reporting"@en ;
+    rdfs:subClassOf agent:AccountsPayablesAgent .
+
+agent:ReconciliationAgent a owl:Class ;
+    rdfs:label "Reconciliation Agent"@en ;
+    rdfs:comment "Agent performing bank reconciliation and payment matching"@en ;
+    rdfs:subClassOf agent:AccountsPayablesAgent .
+
+# ============================================================================
+# Event Classes for Accounts Payables
+# ============================================================================
+
+event:AccountsPayablesEvent a owl:Class ;
+    rdfs:label "Accounts Payables Event"@en ;
+    rdfs:comment "Domain event specific to accounts payables operations"@en ;
+    rdfs:subClassOf event:Event ;
+    owl:disjointUnionOf (
+        event:VendorCreatedEvent
+        event:VendorApprovedEvent
+        event:VendorSuspendedEvent
+        event:InvoiceCreatedEvent
+        event:InvoiceApprovedEvent
+        event:InvoicePaymentAppliedEvent
+        event:PaymentCheckIssuedEvent
+        event:PaymentCheckVoidedEvent
+        event:PaymentCheckClearedEvent
+        event:RecurringInvoiceGeneratedEvent
+    ) .
+
+event:VendorCreatedEvent a owl:Class ;
+    rdfs:label "Vendor Created Event"@en ;
+    rdfs:comment "Event triggered when a new vendor account is created"@en ;
+    rdfs:subClassOf event:AccountsPayablesEvent .
+
+event:InvoiceApprovedEvent a owl:Class ;
+    rdfs:label "Invoice Approved Event"@en ;
+    rdfs:comment "Event triggered when an invoice is approved for payment"@en ;
+    rdfs:subClassOf event:AccountsPayablesEvent .
+
+event:PaymentCheckIssuedEvent a owl:Class ;
+    rdfs:label "Payment Check Issued Event"@en ;
+    rdfs:comment "Event triggered when a payment check is issued"@en ;
+    rdfs:subClassOf event:AccountsPayablesEvent .
+
+# ============================================================================
+# Object Properties
+# ============================================================================
+
+# Vendor Management Properties
+ap:hasVendorMailingAddress a owl:ObjectProperty ;
+    rdfs:label "has vendor mailing address"@en ;
+    rdfs:domain ap:VendorAccount ;
+    rdfs:range ap:VendorMailingAddress ;
+    owl:inverseOf ap:belongsToVendor ;
+    rdfs:comment "Associates a vendor with their mailing addresses"@en .
+
+ap:hasVendorContactPerson a owl:ObjectProperty ;
+    rdfs:label "has vendor contact person"@en ;
+    rdfs:domain ap:VendorAccount ;
+    rdfs:range ap:VendorContactPerson ;
+    owl:inverseOf ap:representingVendor ;
+    rdfs:comment "Associates a vendor with their contact persons"@en .
+
+ap:belongsToVendor a owl:ObjectProperty ;
+    rdfs:label "belongs to vendor"@en ;
+    rdfs:domain ap:VendorMailingAddress ;
+    rdfs:range ap:VendorAccount ;
+    rdfs:comment "Links a mailing address to its vendor"@en .
+
+ap:representingVendor a owl:ObjectProperty ;
+    rdfs:label "representing vendor"@en ;
+    rdfs:domain ap:VendorContactPerson ;
+    rdfs:range ap:VendorAccount ;
+    rdfs:comment "Links a contact person to their vendor"@en .
+
+# Invoice Properties
+ap:fromVendor a owl:ObjectProperty, owl:FunctionalProperty ;
+    rdfs:label "from vendor"@en ;
+    rdfs:domain ap:PurchaseInvoice ;
+    rdfs:range ap:VendorAccount ;
+    owl:inverseOf ap:issuesInvoice ;
+    rdfs:comment "Identifies the vendor who issued the invoice"@en .
+
+ap:issuesInvoice a owl:ObjectProperty ;
+    rdfs:label "issues invoice"@en ;
+    rdfs:domain ap:VendorAccount ;
+    rdfs:range ap:PurchaseInvoice ;
+    rdfs:comment "Links a vendor to invoices they have issued"@en .
+
+ap:hasGeneralLedgerDistribution a owl:ObjectProperty ;
+    rdfs:label "has general ledger distribution"@en ;
+    rdfs:domain ap:PurchaseInvoice ;
+    rdfs:range ap:InvoiceGeneralLedgerDistribution ;
+    owl:inverseOf ap:distributesPurchaseInvoice ;
+    rdfs:comment "Associates an invoice with its GL distributions"@en .
+
+ap:distributesPurchaseInvoice a owl:ObjectProperty ;
+    rdfs:label "distributes purchase invoice"@en ;
+    rdfs:domain ap:InvoiceGeneralLedgerDistribution ;
+    rdfs:range ap:PurchaseInvoice ;
+    rdfs:comment "Links a GL distribution to its invoice"@en .
+
+ap:hasFinanceCharge a owl:ObjectProperty ;
+    rdfs:label "has finance charge"@en ;
+    rdfs:domain ap:PurchaseInvoice ;
+    rdfs:range ap:InvoiceFinanceCharge ;
+    owl:inverseOf ap:chargedOnInvoice ;
+    rdfs:comment "Associates an invoice with finance charges"@en .
+
+ap:chargedOnInvoice a owl:ObjectProperty ;
+    rdfs:label "charged on invoice"@en ;
+    rdfs:domain ap:InvoiceFinanceCharge ;
+    rdfs:range ap:PurchaseInvoice ;
+    rdfs:comment "Links a finance charge to its invoice"@en .
+
+# Payment Properties
+ap:paidToVendor a owl:ObjectProperty, owl:FunctionalProperty ;
+    rdfs:label "paid to vendor"@en ;
+    rdfs:domain ap:VendorPaymentCheck ;
+    rdfs:range ap:VendorAccount ;
+    owl:inverseOf ap:receivesPayment ;
+    rdfs:comment "Identifies the vendor receiving the payment"@en .
+
+ap:receivesPayment a owl:ObjectProperty ;
+    rdfs:label "receives payment"@en ;
+    rdfs:domain ap:VendorAccount ;
+    rdfs:range ap:VendorPaymentCheck ;
+    rdfs:comment "Links a vendor to payments they receive"@en .
+
+ap:hasCheckApplication a owl:ObjectProperty ;
+    rdfs:label "has check application"@en ;
+    rdfs:domain ap:VendorPaymentCheck ;
+    rdfs:range ap:CheckInvoiceApplication ;
+    owl:inverseOf ap:appliesPaymentCheck ;
+    rdfs:comment "Associates a check with its invoice applications"@en .
+
+ap:appliesPaymentCheck a owl:ObjectProperty ;
+    rdfs:label "applies payment check"@en ;
+    rdfs:domain ap:CheckInvoiceApplication ;
+    rdfs:range ap:VendorPaymentCheck ;
+    rdfs:comment "Links an application to its payment check"@en .
+
+ap:appliesToInvoice a owl:ObjectProperty ;
+    rdfs:label "applies to invoice"@en ;
+    rdfs:domain ap:CheckInvoiceApplication ;
+    rdfs:range ap:PurchaseInvoice ;
+    owl:inverseOf ap:hasPaymentApplication ;
+    rdfs:comment "Links a payment application to an invoice"@en .
+
+ap:hasPaymentApplication a owl:ObjectProperty ;
+    rdfs:label "has payment application"@en ;
+    rdfs:domain ap:PurchaseInvoice ;
+    rdfs:range ap:CheckInvoiceApplication ;
+    rdfs:comment "Associates an invoice with payment applications"@en .
+
+ap:processedAsEFT a owl:ObjectProperty, owl:FunctionalProperty ;
+    rdfs:label "processed as EFT"@en ;
+    rdfs:domain ap:VendorPaymentCheck ;
+    rdfs:range ap:ElectronicFundsTransfer ;
+    owl:inverseOf ap:processesPaymentCheck ;
+    rdfs:comment "Links a check to its electronic transfer"@en .
+
+ap:processesPaymentCheck a owl:ObjectProperty ;
+    rdfs:label "processes payment check"@en ;
+    rdfs:domain ap:ElectronicFundsTransfer ;
+    rdfs:range ap:VendorPaymentCheck ;
+    rdfs:comment "Links an EFT to the check it processes"@en .
+
+# Tax Reporting Properties
+ap:hasTaxForm1099 a owl:ObjectProperty ;
+    rdfs:label "has tax form 1099"@en ;
+    rdfs:domain ap:VendorAccount ;
+    rdfs:range ap:TaxForm1099Report ;
+    owl:inverseOf ap:reportsForVendor ;
+    rdfs:comment "Associates a vendor with their 1099 reports"@en .
+
+ap:reportsForVendor a owl:ObjectProperty ;
+    rdfs:label "reports for vendor"@en ;
+    rdfs:domain ap:TaxForm1099Report ;
+    rdfs:range ap:VendorAccount ;
+    rdfs:comment "Links a 1099 report to its vendor"@en .
+
+ap:hasTaxFormUpdate a owl:ObjectProperty ;
+    rdfs:label "has tax form update"@en ;
+    rdfs:domain ap:TaxForm1099Report ;
+    rdfs:range ap:TaxForm1099Update ;
+    owl:inverseOf ap:updatesTaxForm ;
+    rdfs:comment "Associates a 1099 report with its updates"@en .
+
+ap:updatesTaxForm a owl:ObjectProperty ;
+    rdfs:label "updates tax form"@en ;
+    rdfs:domain ap:TaxForm1099Update ;
+    rdfs:range ap:TaxForm1099Report ;
+    rdfs:comment "Links an update to its 1099 report"@en .
+
+# Recurring Transaction Properties
+ap:hasRecurringTemplate a owl:ObjectProperty ;
+    rdfs:label "has recurring template"@en ;
+    rdfs:domain ap:VendorAccount ;
+    rdfs:range ap:RecurringInvoiceTemplate ;
+    owl:inverseOf ap:forVendor ;
+    rdfs:comment "Associates a vendor with recurring templates"@en .
+
+ap:forVendor a owl:ObjectProperty ;
+    rdfs:label "for vendor"@en ;
+    rdfs:domain ap:RecurringInvoiceTemplate ;
+    rdfs:range ap:VendorAccount ;
+    rdfs:comment "Links a recurring template to its vendor"@en .
+
+ap:hasRecurringDistribution a owl:ObjectProperty ;
+    rdfs:label "has recurring distribution"@en ;
+    rdfs:domain ap:RecurringInvoiceTemplate ;
+    rdfs:range ap:RecurringInvoiceDistribution ;
+    owl:inverseOf ap:partOfTemplate ;
+    rdfs:comment "Associates a template with its distributions"@en .
+
+ap:partOfTemplate a owl:ObjectProperty ;
+    rdfs:label "part of template"@en ;
+    rdfs:domain ap:RecurringInvoiceDistribution ;
+    rdfs:range ap:RecurringInvoiceTemplate ;
+    rdfs:comment "Links a distribution to its template"@en .
+
+# Purchase Order Properties
+ap:matchesWithInvoice a owl:ObjectProperty ;
+    rdfs:label "matches with invoice"@en ;
+    rdfs:domain ap:PurchaseOrderAccrual ;
+    rdfs:range ap:PurchaseInvoice ;
+    rdfs:comment "Links an accrual to its matching invoice"@en .
+
+ap:hasAccrualQuantity a owl:ObjectProperty ;
+    rdfs:label "has accrual quantity"@en ;
+    rdfs:domain ap:PurchaseOrderAccrual ;
+    rdfs:range ap:PurchaseOrderAccrualQuantity ;
+    owl:inverseOf ap:tracksAccrual ;
+    rdfs:comment "Associates an accrual with quantity tracking"@en .
+
+ap:tracksAccrual a owl:ObjectProperty ;
+    rdfs:label "tracks accrual"@en ;
+    rdfs:domain ap:PurchaseOrderAccrualQuantity ;
+    rdfs:range ap:PurchaseOrderAccrual ;
+    rdfs:comment "Links quantity tracking to its accrual"@en .
+
+# Agent Interaction Properties
+agent:processes a owl:ObjectProperty ;
+    rdfs:label "processes"@en ;
+    rdfs:domain agent:InvoiceProcessingAgent ;
+    rdfs:range ap:PurchaseInvoice ;
+    rdfs:comment "Relates an agent to invoices it processes"@en .
+
+agent:manages a owl:ObjectProperty ;
+    rdfs:label "manages"@en ;
+    rdfs:domain agent:VendorManagementAgent ;
+    rdfs:range ap:VendorAccount ;
+    rdfs:comment "Relates an agent to vendors it manages"@en .
+
+agent:reconciles a owl:ObjectProperty ;
+    rdfs:label "reconciles"@en ;
+    rdfs:domain agent:ReconciliationAgent ;
+    rdfs:range ap:VendorPaymentCheck ;
+    rdfs:comment "Relates an agent to payments it reconciles"@en .
+
+# ============================================================================
+# Data Properties
+# ============================================================================
+
+# Vendor Properties
+ap:hasVendorIdentificationNumber a owl:DatatypeProperty, owl:FunctionalProperty ;
+    rdfs:label "has vendor identification number"@en ;
+    rdfs:domain ap:VendorAccount ;
+    rdfs:range xsd:string ;
+    rdfs:comment "Unique vendor identification number (max 9 chars)"@en .
+
+ap:hasCompanyLegalName a owl:DatatypeProperty, owl:FunctionalProperty ;
+    rdfs:label "has company legal name"@en ;
+    rdfs:domain ap:VendorAccount ;
+    rdfs:range xsd:string ;
+    rdfs:comment "Legal name of the vendor company"@en .
+
+ap:hasPrimaryContactFullName a owl:DatatypeProperty ;
+    rdfs:label "has primary contact full name"@en ;
+    rdfs:domain ap:VendorAccount ;
+    rdfs:range xsd:string ;
+    rdfs:comment "Full name of primary vendor contact"@en .
+
+ap:hasPrimaryTelephoneNumber a owl:DatatypeProperty ;
+    rdfs:label "has primary telephone number"@en ;
+    rdfs:domain ap:VendorAccount ;
+    rdfs:range xsd:string ;
+    rdfs:comment "Primary telephone number for vendor"@en .
+
+ap:hasEarlyPaymentDiscountPercentage a owl:DatatypeProperty ;
+    rdfs:label "has early payment discount percentage"@en ;
+    rdfs:domain ap:VendorAccount ;
+    rdfs:range xsd:decimal ;
+    rdfs:comment "Percentage discount for early payment"@en .
+
+ap:hasDiscountQualificationDays a owl:DatatypeProperty ;
+    rdfs:label "has discount qualification days"@en ;
+    rdfs:domain ap:VendorAccount ;
+    rdfs:range xsd:integer ;
+    rdfs:comment "Number of days to qualify for early payment discount"@en .
+
+ap:hasNetPaymentDueDays a owl:DatatypeProperty ;
+    rdfs:label "has net payment due days"@en ;
+    rdfs:domain ap:VendorAccount ;
+    rdfs:range xsd:integer ;
+    rdfs:comment "Number of days for net payment terms"@en .
+
+ap:isFederal1099Eligible a owl:DatatypeProperty ;
+    rdfs:label "is federal 1099 eligible"@en ;
+    rdfs:domain ap:VendorAccount ;
+    rdfs:range xsd:boolean ;
+    rdfs:comment "Whether vendor is eligible for 1099 reporting"@en .
+
+# Invoice Properties
+ap:hasInvoiceControlNumber a owl:DatatypeProperty, owl:FunctionalProperty ;
+    rdfs:label "has invoice control number"@en ;
+    rdfs:domain ap:PurchaseInvoice ;
+    rdfs:range xsd:string ;
+    rdfs:comment "Internal control number for the invoice"@en .
+
+ap:hasVendorInvoiceReferenceNumber a owl:DatatypeProperty ;
+    rdfs:label "has vendor invoice reference number"@en ;
+    rdfs:domain ap:PurchaseInvoice ;
+    rdfs:range xsd:string ;
+    rdfs:comment "Vendor's invoice reference number"@en .
+
+ap:hasInvoiceTransactionDate a owl:DatatypeProperty, owl:FunctionalProperty ;
+    rdfs:label "has invoice transaction date"@en ;
+    rdfs:domain ap:PurchaseInvoice ;
+    rdfs:range xsd:date ;
+    rdfs:comment "Date of the invoice transaction"@en .
+
+ap:hasGeneralLedgerPostingDate a owl:DatatypeProperty, owl:FunctionalProperty ;
+    rdfs:label "has general ledger posting date"@en ;
+    rdfs:domain ap:PurchaseInvoice ;
+    rdfs:range xsd:date ;
+    rdfs:comment "Date when invoice is posted to general ledger"@en .
+
+ap:hasPaymentDueDate a owl:DatatypeProperty, owl:FunctionalProperty ;
+    rdfs:label "has payment due date"@en ;
+    rdfs:domain ap:PurchaseInvoice ;
+    rdfs:range xsd:date ;
+    rdfs:comment "Due date for invoice payment"@en .
+
+ap:hasInvoiceOriginalAmount a owl:DatatypeProperty, owl:FunctionalProperty ;
+    rdfs:label "has invoice original amount"@en ;
+    rdfs:domain ap:PurchaseInvoice ;
+    rdfs:range xsd:decimal ;
+    rdfs:comment "Original invoice amount"@en .
+
+ap:hasTotalAmountPaidToDate a owl:DatatypeProperty ;
+    rdfs:label "has total amount paid to date"@en ;
+    rdfs:domain ap:PurchaseInvoice ;
+    rdfs:range xsd:decimal ;
+    rdfs:comment "Total amount paid against the invoice"@en .
+
+ap:hasOutstandingBalanceAmount a owl:DatatypeProperty ;
+    rdfs:label "has outstanding balance amount"@en ;
+    rdfs:domain ap:PurchaseInvoice ;
+    rdfs:range xsd:decimal ;
+    rdfs:comment "Remaining balance on the invoice"@en .
+
+# Payment Properties
+ap:hasCheckSequenceNumber a owl:DatatypeProperty, owl:FunctionalProperty ;
+    rdfs:label "has check sequence number"@en ;
+    rdfs:domain ap:VendorPaymentCheck ;
+    rdfs:range xsd:string ;
+    rdfs:comment "Sequential check number"@en .
+
+ap:hasCheckIssueDate a owl:DatatypeProperty, owl:FunctionalProperty ;
+    rdfs:label "has check issue date"@en ;
+    rdfs:domain ap:VendorPaymentCheck ;
+    rdfs:range xsd:date ;
+    rdfs:comment "Date when check was issued"@en .
+
+ap:hasCheckReconciliationDate a owl:DatatypeProperty ;
+    rdfs:label "has check reconciliation date"@en ;
+    rdfs:domain ap:VendorPaymentCheck ;
+    rdfs:range xsd:date ;
+    rdfs:comment "Date when check was reconciled"@en .
+
+ap:hasCheckGrossAmount a owl:DatatypeProperty, owl:FunctionalProperty ;
+    rdfs:label "has check gross amount"@en ;
+    rdfs:domain ap:VendorPaymentCheck ;
+    rdfs:range xsd:decimal ;
+    rdfs:comment "Gross amount of the check"@en .
+
+ap:hasDiscountAmountTaken a owl:DatatypeProperty ;
+    rdfs:label "has discount amount taken"@en ;
+    rdfs:domain ap:VendorPaymentCheck ;
+    rdfs:range xsd:decimal ;
+    rdfs:comment "Amount of discount taken on payment"@en .
+
+ap:hasNetPaymentAmount a owl:DatatypeProperty, owl:FunctionalProperty ;
+    rdfs:label "has net payment amount"@en ;
+    rdfs:domain ap:VendorPaymentCheck ;
+    rdfs:range xsd:decimal ;
+    rdfs:comment "Net amount of the payment"@en .
+
+# GL Distribution Properties
+ap:hasGeneralLedgerAccount a owl:DatatypeProperty, owl:FunctionalProperty ;
+    rdfs:label "has general ledger account"@en ;
+    rdfs:domain ap:InvoiceGeneralLedgerDistribution ;
+    rdfs:range xsd:string ;
+    rdfs:comment "General ledger account number"@en .
+
+ap:hasDistributionAmount a owl:DatatypeProperty, owl:FunctionalProperty ;
+    rdfs:label "has distribution amount"@en ;
+    rdfs:domain ap:InvoiceGeneralLedgerDistribution ;
+    rdfs:range xsd:decimal ;
+    rdfs:comment "Amount distributed to GL account"@en .
+
+ap:hasDistributionPostingDate a owl:DatatypeProperty, owl:FunctionalProperty ;
+    rdfs:label "has distribution posting date"@en ;
+    rdfs:domain ap:InvoiceGeneralLedgerDistribution ;
+    rdfs:range xsd:date ;
+    rdfs:comment "Date of GL distribution posting"@en .
+
+# Tax Properties
+ap:hasTaxYear a owl:DatatypeProperty, owl:FunctionalProperty ;
+    rdfs:label "has tax year"@en ;
+    rdfs:domain ap:TaxForm1099Report ;
+    rdfs:range xsd:gYear ;
+    rdfs:comment "Tax year for 1099 reporting"@en .
+
+ap:hasFederal1099ReportableAmount a owl:DatatypeProperty ;
+    rdfs:label "has federal 1099 reportable amount"@en ;
+    rdfs:domain ap:PurchaseInvoice ;
+    rdfs:range xsd:decimal ;
+    rdfs:comment "Amount reportable on 1099 form"@en .
+
+# Recurring Template Properties
+ap:hasTemplateReferenceCode a owl:DatatypeProperty, owl:FunctionalProperty ;
+    rdfs:label "has template reference code"@en ;
+    rdfs:domain ap:RecurringInvoiceTemplate ;
+    rdfs:range xsd:string ;
+    rdfs:comment "Reference code for recurring template"@en .
+
+ap:hasTemplateDescription a owl:DatatypeProperty ;
+    rdfs:label "has template description"@en ;
+    rdfs:domain ap:RecurringInvoiceTemplate ;
+    rdfs:range xsd:string ;
+    rdfs:comment "Description of recurring template"@en .
+
+ap:hasNextGenerationDate a owl:DatatypeProperty ;
+    rdfs:label "has next generation date"@en ;
+    rdfs:domain ap:RecurringInvoiceTemplate ;
+    rdfs:range xsd:date ;
+    rdfs:comment "Next date for invoice generation"@en .
+
+ap:hasTemplateAmount a owl:DatatypeProperty ;
+    rdfs:label "has template amount"@en ;
+    rdfs:domain ap:RecurringInvoiceTemplate ;
+    rdfs:range xsd:decimal ;
+    rdfs:comment "Amount for recurring invoice"@en .
+
+# Configuration Properties
+ap:hasConfigurationName a owl:DatatypeProperty, owl:FunctionalProperty ;
+    rdfs:label "has configuration name"@en ;
+    rdfs:domain ap:SystemConfiguration ;
+    rdfs:range xsd:string ;
+    rdfs:comment "Name of the configuration"@en .
+
+ap:hasAccountsPayableLiabilityAccount a owl:DatatypeProperty ;
+    rdfs:label "has accounts payable liability account"@en ;
+    rdfs:domain ap:SystemConfiguration ;
+    rdfs:range xsd:string ;
+    rdfs:comment "GL account for AP liability"@en .
+
+ap:hasDefaultStateTaxPercentage a owl:DatatypeProperty ;
+    rdfs:label "has default state tax percentage"@en ;
+    rdfs:domain ap:SystemConfiguration ;
+    rdfs:range xsd:decimal ;
+    rdfs:comment "Default state tax rate"@en .
+
+# Status Properties
+ap:hasVendorAccountStatus a owl:DatatypeProperty, owl:FunctionalProperty ;
+    rdfs:label "has vendor account status"@en ;
+    rdfs:domain ap:VendorAccount ;
+    rdfs:range ap:VendorAccountStatus ;
+    rdfs:comment "Current status of vendor account"@en .
+
+ap:hasInvoicePaymentStatus a owl:DatatypeProperty, owl:FunctionalProperty ;
+    rdfs:label "has invoice payment status"@en ;
+    rdfs:domain ap:PurchaseInvoice ;
+    rdfs:range ap:InvoicePaymentStatus ;
+    rdfs:comment "Payment status of invoice"@en .
+
+ap:hasInvoiceApprovalStatus a owl:DatatypeProperty, owl:FunctionalProperty ;
+    rdfs:label "has invoice approval status"@en ;
+    rdfs:domain ap:PurchaseInvoice ;
+    rdfs:range ap:InvoiceApprovalStatus ;
+    rdfs:comment "Approval status of invoice"@en .
+
+ap:hasCheckProcessingStatus a owl:DatatypeProperty, owl:FunctionalProperty ;
+    rdfs:label "has check processing status"@en ;
+    rdfs:domain ap:VendorPaymentCheck ;
+    rdfs:range ap:CheckProcessingStatus ;
+    rdfs:comment "Processing status of payment check"@en .
+
+ap:hasBankReconciliationStatus a owl:DatatypeProperty, owl:FunctionalProperty ;
+    rdfs:label "has bank reconciliation status"@en ;
+    rdfs:domain ap:VendorPaymentCheck ;
+    rdfs:range ap:BankReconciliationStatus ;
+    rdfs:comment "Bank reconciliation status of check"@en .
+
+ap:hasRecurrenceFrequency a owl:DatatypeProperty, owl:FunctionalProperty ;
+    rdfs:label "has recurrence frequency"@en ;
+    rdfs:domain ap:RecurringInvoiceTemplate ;
+    rdfs:range ap:RecurrenceFrequency ;
+    rdfs:comment "Frequency of recurring invoice generation"@en .
+
+# ============================================================================
+# Constraints and Axioms
+# ============================================================================
+
+# Disjointness Axioms
+[] a owl:AllDisjointClasses ;
+    owl:members (
+        ap:VendorAccount
+        ap:PurchaseInvoice
+        ap:VendorPaymentCheck
+        ap:TaxForm1099Report
+    ) .
+
+[] a owl:AllDisjointClasses ;
+    owl:members (
+        agent:InvoiceProcessingAgent
+        agent:PaymentProcessingAgent
+        agent:VendorManagementAgent
+        agent:TaxComplianceAgent
+        agent:ReconciliationAgent
+    ) .
+
+# Cardinality Constraints
+ap:PurchaseInvoice rdfs:subClassOf [
+    a owl:Restriction ;
+    owl:onProperty ap:fromVendor ;
+    owl:cardinality "1"^^xsd:nonNegativeInteger
+] .
+
+ap:VendorPaymentCheck rdfs:subClassOf [
+    a owl:Restriction ;
+    owl:onProperty ap:paidToVendor ;
+    owl:cardinality "1"^^xsd:nonNegativeInteger
+] .
+
+ap:CheckInvoiceApplication rdfs:subClassOf [
+    a owl:Restriction ;
+    owl:onProperty ap:appliesPaymentCheck ;
+    owl:cardinality "1"^^xsd:nonNegativeInteger
+] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ap:appliesToInvoice ;
+        owl:cardinality "1"^^xsd:nonNegativeInteger
+    ] .
+
+# Functional Property Chains
+ap:paysForInvoice a owl:ObjectProperty ;
+    rdfs:label "pays for invoice"@en ;
+    owl:propertyChainAxiom (ap:hasCheckApplication ap:appliesToInvoice) ;
+    rdfs:comment "Transitive payment relationship through applications"@en .
+
+# ============================================================================
+# SWRL Rules (for reasoning capabilities)
+# ============================================================================
+
+# Rule: Mark invoice as paid when balance reaches zero
+# PurchaseInvoice(?inv) ∧ hasOutstandingBalanceAmount(?inv, 0) 
+# → hasInvoicePaymentStatus(?inv, Paid)
+
+# Rule: Suspend vendor if multiple overdue invoices
+# VendorAccount(?vendor) ∧ issuesInvoice(?vendor, ?inv1) ∧ issuesInvoice(?vendor, ?inv2) 
+# ∧ differentFrom(?inv1, ?inv2) ∧ hasInvoicePaymentStatus(?inv1, Unpaid) 
+# ∧ hasInvoicePaymentStatus(?inv2, Unpaid) ∧ isOverdue(?inv1, true) ∧ isOverdue(?inv2, true)
+# → hasVendorAccountStatus(?vendor, Suspended)
+
+# Rule: Generate recurring invoice on due date
+# RecurringInvoiceTemplate(?template) ∧ hasNextGenerationDate(?template, ?date) 
+# ∧ temporal:hasDateTimeDescription(?today, ?date) 
+# → generates(?template, ?newInvoice)
+
+# ============================================================================
+# Annotations
+# ============================================================================
+
+ap:VendorAccount rdfs:seeAlso <https://www.irs.gov/forms-pubs/about-form-1099-misc> ;
+    rdfs:isDefinedBy <http://accountex.org/ontology/accounts-payables> .
+
+ap:PurchaseInvoice rdfs:seeAlso <https://spec.edmcouncil.org/fibo/ontology/FBC/ProductsAndServices/ClientsAndAccounts/Invoice> ;
+    rdfs:isDefinedBy <http://accountex.org/ontology/accounts-payables> .
+
+agent:AccountsPayablesAgent rdfs:seeAlso <https://hexdocs.pm/jido/> ;
+    rdfs:isDefinedBy <http://accountex.org/ontology/agent> .
+
+event:AccountsPayablesEvent rdfs:seeAlso <https://hexdocs.pm/commanded/> ;
+    rdfs:isDefinedBy <http://accountex.org/ontology/event> .

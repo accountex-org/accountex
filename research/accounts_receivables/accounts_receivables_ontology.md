@@ -1,0 +1,1132 @@
+# OWL Ontology for Accounts Receivables Domain
+
+Based on the Accountex modular architecture using Elixir, Ash framework, Jido for agentic work, and Commanded for event sourcing, this document presents a comprehensive OWL ontology for the Accounts Receivables domain.
+
+## Complete OWL Ontology
+
+```turtle
+@prefix : <http://accountex.org/ontology/accounts-receivables#> .
+@prefix ar: <http://accountex.org/ontology/accounts-receivables#> .
+@prefix core: <http://accountex.org/ontology/core#> .
+@prefix agent: <http://accountex.org/ontology/agent#> .
+@prefix event: <http://accountex.org/ontology/event#> .
+@prefix sm: <http://accountex.org/ontology/system-manager#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix xml: <http://www.w3.org/XML/1998/namespace> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix foaf: <http://xmlns.com/foaf/0.1/> .
+@prefix dcterms: <http://purl.org/dc/terms/> .
+@prefix schema: <https://schema.org/> .
+@prefix fibo-fnd: <https://spec.edmcouncil.org/fibo/ontology/FND/> .
+@prefix fibo-fbc: <https://spec.edmcouncil.org/fibo/ontology/FBC/> .
+@prefix time: <http://www.w3.org/2006/time#> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
+@prefix gr: <http://purl.org/goodrelations/v1#> .
+
+# ============================================================================
+# Ontology Declaration
+# ============================================================================
+
+<http://accountex.org/ontology/accounts-receivables> a owl:Ontology ;
+    owl:versionIRI <http://accountex.org/ontology/accounts-receivables/1.0> ;
+    dcterms:title "Accountex Accounts Receivables Domain Ontology"@en ;
+    dcterms:description "OWL ontology for the Accounts Receivables domain of an Elixir-based accounting and ERP system using Ash framework, Jido agents, and Commanded event sourcing"@en ;
+    dcterms:creator "Accountex Development Team" ;
+    dcterms:created "2025-01-01"^^xsd:date ;
+    dcterms:license <http://opensource.org/licenses/MIT> ;
+    owl:imports <http://xmlns.com/foaf/0.1/> ,
+                <http://purl.org/dc/terms/> ,
+                <http://www.w3.org/2006/time> ,
+                <http://www.w3.org/ns/prov> ,
+                <http://purl.org/goodrelations/v1> ,
+                <http://accountex.org/ontology/system-manager> ;
+    rdfs:comment "This ontology models the Accounts Receivables domain for a modular, event-sourced accounting and ERP system with agentic capabilities"@en .
+
+# ============================================================================
+# Core Customer Classes
+# ============================================================================
+
+ar:Customer a owl:Class ;
+    rdfs:label "Customer"@en ;
+    rdfs:comment "An entity that purchases goods or services from the organization"@en ;
+    rdfs:subClassOf foaf:Organization ;
+    rdfs:subClassOf gr:BusinessEntity ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ar:hasCustomerNumber ;
+        owl:cardinality "1"^^xsd:nonNegativeInteger
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ar:hasCustomerStatus ;
+        owl:someValuesFrom ar:CustomerStatus
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ar:hasCreditLimit ;
+        owl:maxCardinality "1"^^xsd:nonNegativeInteger
+    ] .
+
+ar:CustomerAddress a owl:Class ;
+    rdfs:label "Customer Address"@en ;
+    rdfs:comment "A physical or mailing address associated with a customer"@en ;
+    rdfs:subClassOf schema:PostalAddress ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ar:belongsToCustomer ;
+        owl:someValuesFrom ar:Customer
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ar:hasAddressType ;
+        owl:someValuesFrom ar:AddressType
+    ] .
+
+ar:CustomerContact a owl:Class ;
+    rdfs:label "Customer Contact"@en ;
+    rdfs:comment "A person who is a contact point for a customer"@en ;
+    rdfs:subClassOf foaf:Person ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ar:contactForCustomer ;
+        owl:someValuesFrom ar:Customer
+    ] .
+
+ar:CustomerCreditCard a owl:Class ;
+    rdfs:label "Customer Credit Card"@en ;
+    rdfs:comment "Payment card information associated with a customer"@en ;
+    rdfs:subClassOf fibo-fbc:PaymentCard ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ar:belongsToCustomer ;
+        owl:someValuesFrom ar:Customer
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ar:hasCardNumber ;
+        owl:cardinality "1"^^xsd:nonNegativeInteger
+    ] .
+
+ar:CustomerActivity a owl:Class ;
+    rdfs:label "Customer Activity"@en ;
+    rdfs:comment "An interaction or transaction event with a customer"@en ;
+    rdfs:subClassOf prov:Activity ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ar:activityForCustomer ;
+        owl:someValuesFrom ar:Customer
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ar:hasActivityDate ;
+        owl:someValuesFrom xsd:dateTimeStamp
+    ] .
+
+# ============================================================================
+# Invoice and Line Item Classes
+# ============================================================================
+
+ar:Invoice a owl:Class ;
+    rdfs:label "Invoice"@en ;
+    rdfs:comment "A commercial document issued to a customer relating to a sale transaction"@en ;
+    rdfs:subClassOf gr:Invoice ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ar:hasInvoiceNumber ;
+        owl:cardinality "1"^^xsd:nonNegativeInteger
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ar:hasInvoiceDate ;
+        owl:cardinality "1"^^xsd:nonNegativeInteger
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ar:hasDueDate ;
+        owl:cardinality "1"^^xsd:nonNegativeInteger
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ar:billedToCustomer ;
+        owl:someValuesFrom ar:Customer
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ar:hasInvoiceType ;
+        owl:someValuesFrom ar:InvoiceType
+    ] .
+
+ar:InvoiceLineItem a owl:Class ;
+    rdfs:label "Invoice Line Item"@en ;
+    rdfs:comment "A single line item on an invoice representing a product or service"@en ;
+    rdfs:subClassOf gr:Offering ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ar:partOfInvoice ;
+        owl:someValuesFrom ar:Invoice
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ar:hasLineNumber ;
+        owl:cardinality "1"^^xsd:nonNegativeInteger
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ar:hasQuantity ;
+        owl:someValuesFrom xsd:decimal
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ar:hasUnitPrice ;
+        owl:someValuesFrom xsd:decimal
+    ] .
+
+ar:InvoiceRemark a owl:Class ;
+    rdfs:label "Invoice Remark"@en ;
+    rdfs:comment "Comments or notes associated with an invoice"@en ;
+    rdfs:subClassOf schema:Comment ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ar:remarkForInvoice ;
+        owl:someValuesFrom ar:Invoice
+    ] .
+
+ar:RecurringInvoice a owl:Class ;
+    rdfs:label "Recurring Invoice"@en ;
+    rdfs:comment "A template for generating invoices on a recurring schedule"@en ;
+    rdfs:subClassOf ar:Invoice ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ar:hasRecurrencePattern ;
+        owl:someValuesFrom ar:RecurrencePattern
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ar:hasNextGenerationDate ;
+        owl:someValuesFrom xsd:date
+    ] .
+
+ar:RecurringInvoiceLineItem a owl:Class ;
+    rdfs:label "Recurring Invoice Line Item"@en ;
+    rdfs:comment "A line item template for recurring invoices"@en ;
+    rdfs:subClassOf ar:InvoiceLineItem ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ar:partOfRecurringInvoice ;
+        owl:someValuesFrom ar:RecurringInvoice
+    ] .
+
+# ============================================================================
+# Payment and Application Classes
+# ============================================================================
+
+ar:Payment a owl:Class ;
+    rdfs:label "Payment"@en ;
+    rdfs:comment "A payment received from a customer"@en ;
+    rdfs:subClassOf gr:PaymentMethod ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ar:hasReceiptNumber ;
+        owl:cardinality "1"^^xsd:nonNegativeInteger
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ar:hasPaymentDate ;
+        owl:cardinality "1"^^xsd:nonNegativeInteger
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ar:fromCustomer ;
+        owl:someValuesFrom ar:Customer
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ar:hasPaymentMethod ;
+        owl:someValuesFrom ar:PaymentMethod
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ar:hasPaymentAmount ;
+        owl:cardinality "1"^^xsd:nonNegativeInteger
+    ] .
+
+ar:PaymentApplication a owl:Class ;
+    rdfs:label "Payment Application"@en ;
+    rdfs:comment "The application of a payment to specific invoices"@en ;
+    rdfs:subClassOf prov:Activity ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ar:appliesPayment ;
+        owl:someValuesFrom ar:Payment
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ar:appliesToInvoice ;
+        owl:someValuesFrom ar:Invoice
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ar:hasAppliedAmount ;
+        owl:cardinality "1"^^xsd:nonNegativeInteger
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ar:hasApplicationDate ;
+        owl:cardinality "1"^^xsd:nonNegativeInteger
+    ] .
+
+ar:BankDeposit a owl:Class ;
+    rdfs:label "Bank Deposit"@en ;
+    rdfs:comment "A deposit of payments into a bank account"@en ;
+    rdfs:subClassOf fibo-fbc:Deposit ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ar:hasDepositDate ;
+        owl:cardinality "1"^^xsd:nonNegativeInteger
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ar:hasDepositAmount ;
+        owl:someValuesFrom xsd:decimal
+    ] .
+
+# ============================================================================
+# Supporting Entity Classes
+# ============================================================================
+
+ar:Salesperson a owl:Class ;
+    rdfs:label "Salesperson"@en ;
+    rdfs:comment "An employee responsible for sales and customer relationships"@en ;
+    rdfs:subClassOf foaf:Person ;
+    rdfs:subClassOf schema:Employee ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ar:hasSalespersonCode ;
+        owl:cardinality "1"^^xsd:nonNegativeInteger
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ar:hasCommissionRate ;
+        owl:maxCardinality "1"^^xsd:nonNegativeInteger
+    ] .
+
+ar:RevenueCategory a owl:Class ;
+    rdfs:label "Revenue Category"@en ;
+    rdfs:comment "A classification for types of revenue"@en ;
+    rdfs:subClassOf schema:Category ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ar:hasCategoryCode ;
+        owl:cardinality "1"^^xsd:nonNegativeInteger
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ar:hasGLAccountCode ;
+        owl:someValuesFrom xsd:string
+    ] .
+
+ar:PaymentTerm a owl:Class ;
+    rdfs:label "Payment Term"@en ;
+    rdfs:comment "Terms and conditions for payment including due dates and discounts"@en ;
+    rdfs:subClassOf gr:PaymentMethod ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ar:hasTermsCode ;
+        owl:cardinality "1"^^xsd:nonNegativeInteger
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ar:hasNetDays ;
+        owl:someValuesFrom xsd:integer
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ar:hasDiscountPercentage ;
+        owl:maxCardinality "1"^^xsd:nonNegativeInteger
+    ] .
+
+ar:FreightCode a owl:Class ;
+    rdfs:label "Freight Code"@en ;
+    rdfs:comment "A code representing freight or shipping charges"@en ;
+    rdfs:subClassOf gr:DeliveryMethod ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ar:hasFreightCode ;
+        owl:cardinality "1"^^xsd:nonNegativeInteger
+    ] .
+
+ar:TaxCode a owl:Class ;
+    rdfs:label "Tax Code"@en ;
+    rdfs:comment "A code representing tax calculation rules"@en ;
+    rdfs:subClassOf fibo-fbc:TaxCode ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ar:hasTaxCodeValue ;
+        owl:cardinality "1"^^xsd:nonNegativeInteger
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ar:hasTaxRate ;
+        owl:someValuesFrom xsd:decimal
+    ] .
+
+ar:FinanceCharge a owl:Class ;
+    rdfs:label "Finance Charge"@en ;
+    rdfs:comment "A charge applied to overdue accounts"@en ;
+    rdfs:subClassOf gr:PriceSpecification ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ar:chargedToCustomer ;
+        owl:someValuesFrom ar:Customer
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ar:chargedOnInvoice ;
+        owl:someValuesFrom ar:Invoice
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ar:hasChargeAmount ;
+        owl:cardinality "1"^^xsd:nonNegativeInteger
+    ] .
+
+ar:OpenCreditAdjustment a owl:Class ;
+    rdfs:label "Open Credit Adjustment"@en ;
+    rdfs:comment "A credit adjustment not yet applied to specific invoices"@en ;
+    rdfs:subClassOf gr:PriceSpecification ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ar:forCustomer ;
+        owl:someValuesFrom ar:Customer
+    ] ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty ar:hasAdjustmentAmount ;
+        owl:cardinality "1"^^xsd:nonNegativeInteger
+    ] .
+
+# ============================================================================
+# Enumeration Classes
+# ============================================================================
+
+ar:CustomerStatus a owl:Class ;
+    rdfs:label "Customer Status"@en ;
+    rdfs:comment "The current status of a customer account"@en ;
+    owl:equivalentClass [
+        a owl:Class ;
+        owl:oneOf (ar:Active ar:Inactive ar:OnHold ar:Suspended)
+    ] .
+
+ar:InvoiceType a owl:Class ;
+    rdfs:label "Invoice Type"@en ;
+    rdfs:comment "The type or category of an invoice"@en ;
+    owl:equivalentClass [
+        a owl:Class ;
+        owl:oneOf (ar:StandardInvoice ar:CreditMemo ar:DebitMemo ar:FinanceChargeInvoice)
+    ] .
+
+ar:PaymentMethod a owl:Class ;
+    rdfs:label "Payment Method"@en ;
+    rdfs:comment "The method used for payment"@en ;
+    owl:equivalentClass [
+        a owl:Class ;
+        owl:oneOf (ar:Cash ar:Check ar:CreditCard ar:ACH ar:Wire ar:Other)
+    ] .
+
+ar:AddressType a owl:Class ;
+    rdfs:label "Address Type"@en ;
+    rdfs:comment "The type of customer address"@en ;
+    owl:equivalentClass [
+        a owl:Class ;
+        owl:oneOf (ar:BillingAddress ar:ShippingAddress ar:MailingAddress)
+    ] .
+
+ar:RecurrencePattern a owl:Class ;
+    rdfs:label "Recurrence Pattern"@en ;
+    rdfs:comment "The pattern for recurring invoice generation"@en ;
+    owl:equivalentClass [
+        a owl:Class ;
+        owl:oneOf (ar:Daily ar:Weekly ar:BiWeekly ar:Monthly ar:Quarterly ar:Annually)
+    ] .
+
+# ============================================================================
+# Agent Classes for AR Domain
+# ============================================================================
+
+ar:ARAgent a owl:Class ;
+    rdfs:label "AR Agent"@en ;
+    rdfs:comment "An agent specialized for accounts receivables operations"@en ;
+    rdfs:subClassOf agent:Agent ;
+    owl:disjointUnionOf (
+        ar:InvoicingAgent
+        ar:CollectionAgent
+        ar:CreditManagementAgent
+        ar:PaymentProcessingAgent
+        ar:CustomerServiceAgent
+    ) .
+
+ar:InvoicingAgent a owl:Class ;
+    rdfs:label "Invoicing Agent"@en ;
+    rdfs:comment "Agent responsible for invoice generation and management"@en ;
+    rdfs:subClassOf ar:ARAgent .
+
+ar:CollectionAgent a owl:Class ;
+    rdfs:label "Collection Agent"@en ;
+    rdfs:comment "Agent responsible for collections and dunning processes"@en ;
+    rdfs:subClassOf ar:ARAgent .
+
+ar:CreditManagementAgent a owl:Class ;
+    rdfs:label "Credit Management Agent"@en ;
+    rdfs:comment "Agent responsible for credit limit management and risk assessment"@en ;
+    rdfs:subClassOf ar:ARAgent .
+
+ar:PaymentProcessingAgent a owl:Class ;
+    rdfs:label "Payment Processing Agent"@en ;
+    rdfs:comment "Agent responsible for processing and applying payments"@en ;
+    rdfs:subClassOf ar:ARAgent .
+
+# ============================================================================
+# Event Classes for AR Domain
+# ============================================================================
+
+ar:AREvent a owl:Class ;
+    rdfs:label "AR Event"@en ;
+    rdfs:comment "An event in the accounts receivables domain"@en ;
+    rdfs:subClassOf event:Event ;
+    owl:disjointUnionOf (
+        ar:CustomerCreatedEvent
+        ar:InvoiceCreatedEvent
+        ar:InvoiceVoidedEvent
+        ar:PaymentReceivedEvent
+        ar:PaymentAppliedEvent
+        ar:CreditLimitChangedEvent
+        ar:FinanceChargeAppliedEvent
+    ) .
+
+ar:CustomerCreatedEvent a owl:Class ;
+    rdfs:label "Customer Created Event"@en ;
+    rdfs:subClassOf ar:AREvent .
+
+ar:InvoiceCreatedEvent a owl:Class ;
+    rdfs:label "Invoice Created Event"@en ;
+    rdfs:subClassOf ar:AREvent .
+
+ar:PaymentReceivedEvent a owl:Class ;
+    rdfs:label "Payment Received Event"@en ;
+    rdfs:subClassOf ar:AREvent .
+
+ar:PaymentAppliedEvent a owl:Class ;
+    rdfs:label "Payment Applied Event"@en ;
+    rdfs:subClassOf ar:AREvent .
+
+# ============================================================================
+# Object Properties
+# ============================================================================
+
+# Customer Relationships
+ar:hasCustomer a owl:ObjectProperty ;
+    rdfs:label "has customer"@en ;
+    rdfs:domain ar:Invoice ;
+    rdfs:range ar:Customer ;
+    rdfs:comment "Relates an invoice to its customer"@en .
+
+ar:billedToCustomer a owl:ObjectProperty ;
+    rdfs:label "billed to customer"@en ;
+    rdfs:subPropertyOf ar:hasCustomer ;
+    rdfs:domain ar:Invoice ;
+    rdfs:range ar:Customer ;
+    rdfs:comment "The customer to whom the invoice is billed"@en .
+
+ar:fromCustomer a owl:ObjectProperty ;
+    rdfs:label "from customer"@en ;
+    rdfs:domain ar:Payment ;
+    rdfs:range ar:Customer ;
+    rdfs:comment "The customer who made the payment"@en .
+
+ar:belongsToCustomer a owl:ObjectProperty ;
+    rdfs:label "belongs to customer"@en ;
+    rdfs:domain [
+        a owl:Class ;
+        owl:unionOf (ar:CustomerAddress ar:CustomerContact ar:CustomerCreditCard)
+    ] ;
+    rdfs:range ar:Customer ;
+    rdfs:comment "Associates customer-related entities with a customer"@en .
+
+ar:hasParentCustomer a owl:ObjectProperty ;
+    rdfs:label "has parent customer"@en ;
+    rdfs:domain ar:Customer ;
+    rdfs:range ar:Customer ;
+    rdfs:comment "Hierarchical relationship between customers"@en .
+
+ar:assignedToSalesperson a owl:ObjectProperty ;
+    rdfs:label "assigned to salesperson"@en ;
+    rdfs:domain ar:Customer ;
+    rdfs:range ar:Salesperson ;
+    rdfs:comment "The salesperson assigned to a customer"@en .
+
+# Invoice Relationships
+ar:hasInvoice a owl:ObjectProperty ;
+    rdfs:label "has invoice"@en ;
+    rdfs:domain ar:Customer ;
+    rdfs:range ar:Invoice ;
+    owl:inverseOf ar:hasCustomer ;
+    rdfs:comment "Invoices associated with a customer"@en .
+
+ar:containsLineItem a owl:ObjectProperty ;
+    rdfs:label "contains line item"@en ;
+    rdfs:domain ar:Invoice ;
+    rdfs:range ar:InvoiceLineItem ;
+    owl:inverseOf ar:partOfInvoice ;
+    rdfs:comment "Line items contained in an invoice"@en .
+
+ar:partOfInvoice a owl:ObjectProperty ;
+    rdfs:label "part of invoice"@en ;
+    rdfs:domain ar:InvoiceLineItem ;
+    rdfs:range ar:Invoice ;
+    rdfs:comment "The invoice this line item belongs to"@en .
+
+ar:hasInvoiceRemark a owl:ObjectProperty ;
+    rdfs:label "has invoice remark"@en ;
+    rdfs:domain ar:Invoice ;
+    rdfs:range ar:InvoiceRemark ;
+    rdfs:comment "Remarks associated with an invoice"@en .
+
+ar:soldBySalesperson a owl:ObjectProperty ;
+    rdfs:label "sold by salesperson"@en ;
+    rdfs:domain ar:Invoice ;
+    rdfs:range ar:Salesperson ;
+    rdfs:comment "The salesperson who created the invoice"@en .
+
+# Payment Relationships
+ar:hasPayment a owl:ObjectProperty ;
+    rdfs:label "has payment"@en ;
+    rdfs:domain ar:Customer ;
+    rdfs:range ar:Payment ;
+    owl:inverseOf ar:fromCustomer ;
+    rdfs:comment "Payments made by a customer"@en .
+
+ar:appliesPayment a owl:ObjectProperty ;
+    rdfs:label "applies payment"@en ;
+    rdfs:domain ar:PaymentApplication ;
+    rdfs:range ar:Payment ;
+    rdfs:comment "The payment being applied"@en .
+
+ar:appliesToInvoice a owl:ObjectProperty ;
+    rdfs:label "applies to invoice"@en ;
+    rdfs:domain ar:PaymentApplication ;
+    rdfs:range ar:Invoice ;
+    rdfs:comment "The invoice the payment is applied to"@en .
+
+ar:receivesPaymentApplication a owl:ObjectProperty ;
+    rdfs:label "receives payment application"@en ;
+    rdfs:domain ar:Invoice ;
+    rdfs:range ar:PaymentApplication ;
+    owl:inverseOf ar:appliesToInvoice ;
+    rdfs:comment "Payment applications received by an invoice"@en .
+
+ar:includedInDeposit a owl:ObjectProperty ;
+    rdfs:label "included in deposit"@en ;
+    rdfs:domain ar:Payment ;
+    rdfs:range ar:BankDeposit ;
+    rdfs:comment "The bank deposit this payment is included in"@en .
+
+# Supporting Entity Relationships
+ar:usesPaymentTerm a owl:ObjectProperty ;
+    rdfs:label "uses payment term"@en ;
+    rdfs:domain [
+        a owl:Class ;
+        owl:unionOf (ar:Customer ar:Invoice ar:Payment)
+    ] ;
+    rdfs:range ar:PaymentTerm ;
+    rdfs:comment "Payment terms used by various entities"@en .
+
+ar:categorizedByRevenue a owl:ObjectProperty ;
+    rdfs:label "categorized by revenue"@en ;
+    rdfs:domain [
+        a owl:Class ;
+        owl:unionOf (ar:Customer ar:InvoiceLineItem)
+    ] ;
+    rdfs:range ar:RevenueCategory ;
+    rdfs:comment "Revenue category classification"@en .
+
+ar:usesFreightCode a owl:ObjectProperty ;
+    rdfs:label "uses freight code"@en ;
+    rdfs:domain ar:Invoice ;
+    rdfs:range ar:FreightCode ;
+    rdfs:comment "Freight code used on an invoice"@en .
+
+ar:usesTaxCode a owl:ObjectProperty ;
+    rdfs:label "uses tax code"@en ;
+    rdfs:domain [
+        a owl:Class ;
+        owl:unionOf (ar:Customer ar:Invoice)
+    ] ;
+    rdfs:range ar:TaxCode ;
+    rdfs:comment "Tax code used for calculations"@en .
+
+# Finance Charge Relationships
+ar:accruesFinanceCharge a owl:ObjectProperty ;
+    rdfs:label "accrues finance charge"@en ;
+    rdfs:domain [
+        a owl:Class ;
+        owl:unionOf (ar:Customer ar:Invoice)
+    ] ;
+    rdfs:range ar:FinanceCharge ;
+    rdfs:comment "Finance charges accrued"@en .
+
+ar:chargedToCustomer a owl:ObjectProperty ;
+    rdfs:label "charged to customer"@en ;
+    rdfs:domain ar:FinanceCharge ;
+    rdfs:range ar:Customer ;
+    rdfs:comment "Customer charged with finance charge"@en .
+
+ar:chargedOnInvoice a owl:ObjectProperty ;
+    rdfs:label "charged on invoice"@en ;
+    rdfs:domain ar:FinanceCharge ;
+    rdfs:range ar:Invoice ;
+    rdfs:comment "Invoice on which finance charge is applied"@en .
+
+# Agent Relationships
+ar:managesCustomer a owl:ObjectProperty ;
+    rdfs:label "manages customer"@en ;
+    rdfs:domain ar:ARAgent ;
+    rdfs:range ar:Customer ;
+    rdfs:comment "Customer managed by an AR agent"@en .
+
+ar:processesInvoice a owl:ObjectProperty ;
+    rdfs:label "processes invoice"@en ;
+    rdfs:domain ar:InvoicingAgent ;
+    rdfs:range ar:Invoice ;
+    rdfs:comment "Invoice processed by an agent"@en .
+
+ar:processesPayment a owl:ObjectProperty ;
+    rdfs:label "processes payment"@en ;
+    rdfs:domain ar:PaymentProcessingAgent ;
+    rdfs:range ar:Payment ;
+    rdfs:comment "Payment processed by an agent"@en .
+
+# Event Relationships
+ar:triggersAREvent a owl:ObjectProperty ;
+    rdfs:label "triggers AR event"@en ;
+    rdfs:domain [
+        a owl:Class ;
+        owl:unionOf (ar:Customer ar:Invoice ar:Payment)
+    ] ;
+    rdfs:range ar:AREvent ;
+    rdfs:comment "AR events triggered by domain entities"@en .
+
+# ============================================================================
+# Data Properties
+# ============================================================================
+
+# Customer Properties
+ar:hasCustomerNumber a owl:DatatypeProperty, owl:FunctionalProperty ;
+    rdfs:label "has customer number"@en ;
+    rdfs:domain ar:Customer ;
+    rdfs:range xsd:string ;
+    rdfs:comment "Unique customer identifier"@en .
+
+ar:hasCompanyName a owl:DatatypeProperty ;
+    rdfs:label "has company name"@en ;
+    rdfs:domain ar:Customer ;
+    rdfs:range xsd:string ;
+    rdfs:comment "Company name of the customer"@en .
+
+ar:hasCreditLimit a owl:DatatypeProperty ;
+    rdfs:label "has credit limit"@en ;
+    rdfs:domain ar:Customer ;
+    rdfs:range xsd:decimal ;
+    rdfs:comment "Credit limit amount for the customer"@en .
+
+ar:hasTemporaryCreditIncrease a owl:DatatypeProperty ;
+    rdfs:label "has temporary credit increase"@en ;
+    rdfs:domain ar:Customer ;
+    rdfs:range xsd:decimal ;
+    rdfs:comment "Temporary credit limit increase amount"@en .
+
+ar:hasOutstandingBalance a owl:DatatypeProperty ;
+    rdfs:label "has outstanding balance"@en ;
+    rdfs:domain ar:Customer ;
+    rdfs:range xsd:decimal ;
+    rdfs:comment "Current outstanding balance"@en .
+
+ar:hasYearToDateSales a owl:DatatypeProperty ;
+    rdfs:label "has year to date sales"@en ;
+    rdfs:domain ar:Customer ;
+    rdfs:range xsd:decimal ;
+    rdfs:comment "Year-to-date sales amount"@en .
+
+ar:hasCustomerSinceDate a owl:DatatypeProperty ;
+    rdfs:label "has customer since date"@en ;
+    rdfs:domain ar:Customer ;
+    rdfs:range xsd:date ;
+    rdfs:comment "Date when entity became a customer"@en .
+
+ar:applyFinanceCharges a owl:DatatypeProperty ;
+    rdfs:label "apply finance charges"@en ;
+    rdfs:domain ar:Customer ;
+    rdfs:range xsd:boolean ;
+    rdfs:comment "Whether to apply finance charges to this customer"@en .
+
+# Invoice Properties
+ar:hasInvoiceNumber a owl:DatatypeProperty, owl:FunctionalProperty ;
+    rdfs:label "has invoice number"@en ;
+    rdfs:domain ar:Invoice ;
+    rdfs:range xsd:string ;
+    rdfs:comment "Unique invoice identifier"@en .
+
+ar:hasInvoiceDate a owl:DatatypeProperty, owl:FunctionalProperty ;
+    rdfs:label "has invoice date"@en ;
+    rdfs:domain ar:Invoice ;
+    rdfs:range xsd:date ;
+    rdfs:comment "Date the invoice was issued"@en .
+
+ar:hasDueDate a owl:DatatypeProperty, owl:FunctionalProperty ;
+    rdfs:label "has due date"@en ;
+    rdfs:domain ar:Invoice ;
+    rdfs:range xsd:date ;
+    rdfs:comment "Payment due date for the invoice"@en .
+
+ar:hasDiscountDate a owl:DatatypeProperty ;
+    rdfs:label "has discount date"@en ;
+    rdfs:domain ar:Invoice ;
+    rdfs:range xsd:date ;
+    rdfs:comment "Date until which discount applies"@en .
+
+ar:hasSubtotalAmount a owl:DatatypeProperty ;
+    rdfs:label "has subtotal amount"@en ;
+    rdfs:domain ar:Invoice ;
+    rdfs:range xsd:decimal ;
+    rdfs:comment "Subtotal amount before taxes and adjustments"@en .
+
+ar:hasTaxAmount a owl:DatatypeProperty ;
+    rdfs:label "has tax amount"@en ;
+    rdfs:domain ar:Invoice ;
+    rdfs:range xsd:decimal ;
+    rdfs:comment "Total tax amount"@en .
+
+ar:hasFreightAmount a owl:DatatypeProperty ;
+    rdfs:label "has freight amount"@en ;
+    rdfs:domain ar:Invoice ;
+    rdfs:range xsd:decimal ;
+    rdfs:comment "Freight or shipping charges"@en .
+
+ar:hasTotalAmount a owl:DatatypeProperty ;
+    rdfs:label "has total amount"@en ;
+    rdfs:domain ar:Invoice ;
+    rdfs:range xsd:decimal ;
+    rdfs:comment "Total invoice amount"@en .
+
+ar:hasOutstandingAmount a owl:DatatypeProperty ;
+    rdfs:label "has outstanding amount"@en ;
+    rdfs:domain ar:Invoice ;
+    rdfs:range xsd:decimal ;
+    rdfs:comment "Outstanding balance on the invoice"@en .
+
+ar:isVoid a owl:DatatypeProperty ;
+    rdfs:label "is void"@en ;
+    rdfs:domain [
+        a owl:Class ;
+        owl:unionOf (ar:Invoice ar:Payment)
+    ] ;
+    rdfs:range xsd:boolean ;
+    rdfs:comment "Whether the document is voided"@en .
+
+ar:postedToGeneralLedger a owl:DatatypeProperty ;
+    rdfs:label "posted to general ledger"@en ;
+    rdfs:domain [
+        a owl:Class ;
+        owl:unionOf (ar:Invoice ar:Payment)
+    ] ;
+    rdfs:range xsd:boolean ;
+    rdfs:comment "Whether posted to the general ledger"@en .
+
+# Payment Properties
+ar:hasReceiptNumber a owl:DatatypeProperty, owl:FunctionalProperty ;
+    rdfs:label "has receipt number"@en ;
+    rdfs:domain ar:Payment ;
+    rdfs:range xsd:string ;
+    rdfs:comment "Unique receipt identifier"@en .
+
+ar:hasPaymentDate a owl:DatatypeProperty, owl:FunctionalProperty ;
+    rdfs:label "has payment date"@en ;
+    rdfs:domain ar:Payment ;
+    rdfs:range xsd:date ;
+    rdfs:comment "Date the payment was received"@en .
+
+ar:hasPaymentAmount a owl:DatatypeProperty, owl:FunctionalProperty ;
+    rdfs:label "has payment amount"@en ;
+    rdfs:domain ar:Payment ;
+    rdfs:range xsd:decimal ;
+    rdfs:comment "Total payment amount"@en .
+
+ar:hasAppliedAmount a owl:DatatypeProperty ;
+    rdfs:label "has applied amount"@en ;
+    rdfs:domain ar:Payment ;
+    rdfs:range xsd:decimal ;
+    rdfs:comment "Amount applied to invoices"@en .
+
+ar:hasUnappliedAmount a owl:DatatypeProperty ;
+    rdfs:label "has unapplied amount"@en ;
+    rdfs:domain ar:Payment ;
+    rdfs:range xsd:decimal ;
+    rdfs:comment "Amount not yet applied"@en .
+
+ar:hasCheckNumber a owl:DatatypeProperty ;
+    rdfs:label "has check number"@en ;
+    rdfs:domain ar:Payment ;
+    rdfs:range xsd:string ;
+    rdfs:comment "Check or card number"@en .
+
+# Line Item Properties
+ar:hasLineNumber a owl:DatatypeProperty, owl:FunctionalProperty ;
+    rdfs:label "has line number"@en ;
+    rdfs:domain ar:InvoiceLineItem ;
+    rdfs:range xsd:integer ;
+    rdfs:comment "Line number on the invoice"@en .
+
+ar:hasQuantity a owl:DatatypeProperty ;
+    rdfs:label "has quantity"@en ;
+    rdfs:domain ar:InvoiceLineItem ;
+    rdfs:range xsd:decimal ;
+    rdfs:comment "Quantity of items"@en .
+
+ar:hasUnitPrice a owl:DatatypeProperty ;
+    rdfs:label "has unit price"@en ;
+    rdfs:domain ar:InvoiceLineItem ;
+    rdfs:range xsd:decimal ;
+    rdfs:comment "Price per unit"@en .
+
+ar:hasLineAmount a owl:DatatypeProperty ;
+    rdfs:label "has line amount"@en ;
+    rdfs:domain ar:InvoiceLineItem ;
+    rdfs:range xsd:decimal ;
+    rdfs:comment "Total line amount"@en .
+
+ar:hasDescription a owl:DatatypeProperty ;
+    rdfs:label "has description"@en ;
+    rdfs:domain ar:InvoiceLineItem ;
+    rdfs:range xsd:string ;
+    rdfs:comment "Description of the line item"@en .
+
+# Supporting Entity Properties
+ar:hasSalespersonCode a owl:DatatypeProperty, owl:FunctionalProperty ;
+    rdfs:label "has salesperson code"@en ;
+    rdfs:domain ar:Salesperson ;
+    rdfs:range xsd:string ;
+    rdfs:comment "Unique salesperson identifier"@en .
+
+ar:hasCommissionRate a owl:DatatypeProperty ;
+    rdfs:label "has commission rate"@en ;
+    rdfs:domain ar:Salesperson ;
+    rdfs:range xsd:decimal ;
+    rdfs:comment "Commission rate percentage"@en .
+
+ar:hasTermsCode a owl:DatatypeProperty, owl:FunctionalProperty ;
+    rdfs:label "has terms code"@en ;
+    rdfs:domain ar:PaymentTerm ;
+    rdfs:range xsd:string ;
+    rdfs:comment "Payment terms identifier"@en .
+
+ar:hasNetDays a owl:DatatypeProperty ;
+    rdfs:label "has net days"@en ;
+    rdfs:domain ar:PaymentTerm ;
+    rdfs:range xsd:integer ;
+    rdfs:comment "Number of days until payment is due"@en .
+
+ar:hasDiscountPercentage a owl:DatatypeProperty ;
+    rdfs:label "has discount percentage"@en ;
+    rdfs:domain ar:PaymentTerm ;
+    rdfs:range xsd:decimal ;
+    rdfs:comment "Early payment discount percentage"@en .
+
+ar:hasDiscountDays a owl:DatatypeProperty ;
+    rdfs:label "has discount days"@en ;
+    rdfs:domain ar:PaymentTerm ;
+    rdfs:range xsd:integer ;
+    rdfs:comment "Days within which discount applies"@en .
+
+# Temporal Properties
+ar:hasActivityDate a owl:DatatypeProperty ;
+    rdfs:label "has activity date"@en ;
+    rdfs:domain ar:CustomerActivity ;
+    rdfs:range xsd:dateTimeStamp ;
+    rdfs:comment "Date and time of the activity"@en .
+
+ar:hasApplicationDate a owl:DatatypeProperty ;
+    rdfs:label "has application date"@en ;
+    rdfs:domain ar:PaymentApplication ;
+    rdfs:range xsd:date ;
+    rdfs:comment "Date the payment was applied"@en .
+
+ar:hasDepositDate a owl:DatatypeProperty ;
+    rdfs:label "has deposit date"@en ;
+    rdfs:domain ar:BankDeposit ;
+    rdfs:range xsd:date ;
+    rdfs:comment "Date of bank deposit"@en .
+
+# ============================================================================
+# Constraints and Axioms
+# ============================================================================
+
+# Disjointness Axioms
+[] a owl:AllDisjointClasses ;
+    owl:members (
+        ar:Customer
+        ar:Invoice
+        ar:Payment
+        ar:Salesperson
+    ) .
+
+[] a owl:AllDisjointClasses ;
+    owl:members (
+        ar:StandardInvoice
+        ar:CreditMemo
+        ar:DebitMemo
+        ar:FinanceChargeInvoice
+    ) .
+
+# Cardinality Constraints
+ar:Invoice rdfs:subClassOf [
+    a owl:Restriction ;
+    owl:onProperty ar:billedToCustomer ;
+    owl:cardinality "1"^^xsd:nonNegativeInteger
+] .
+
+ar:Payment rdfs:subClassOf [
+    a owl:Restriction ;
+    owl:onProperty ar:fromCustomer ;
+    owl:cardinality "1"^^xsd:nonNegativeInteger
+] .
+
+ar:PaymentApplication rdfs:subClassOf [
+    a owl:Restriction ;
+    owl:onProperty ar:appliesPayment ;
+    owl:cardinality "1"^^xsd:nonNegativeInteger
+] .
+
+ar:PaymentApplication rdfs:subClassOf [
+    a owl:Restriction ;
+    owl:onProperty ar:appliesToInvoice ;
+    owl:cardinality "1"^^xsd:nonNegativeInteger
+] .
+
+# Inverse Properties
+ar:hasInvoice owl:inverseOf ar:hasCustomer .
+ar:hasPayment owl:inverseOf ar:fromCustomer .
+ar:containsLineItem owl:inverseOf ar:partOfInvoice .
+ar:receivesPaymentApplication owl:inverseOf ar:appliesToInvoice .
+
+# Functional Properties
+ar:hasCustomerNumber a owl:FunctionalProperty .
+ar:hasInvoiceNumber a owl:FunctionalProperty .
+ar:hasReceiptNumber a owl:FunctionalProperty .
+
+# ============================================================================
+# SWRL Rules (Optional - for reasoning)
+# ============================================================================
+
+# Rule: If payment amount equals invoice amount, mark invoice as paid
+# Payment(?p) ∧ Invoice(?i) ∧ PaymentApplication(?pa) ∧ 
+# appliesPayment(?pa, ?p) ∧ appliesToInvoice(?pa, ?i) ∧
+# hasPaymentAmount(?p, ?amount) ∧ hasTotalAmount(?i, ?amount)
+# → hasOutstandingAmount(?i, 0)
+
+# Rule: Customer on hold cannot have new invoices
+# Customer(?c) ∧ hasCustomerStatus(?c, OnHold) ∧ Invoice(?i) ∧ 
+# billedToCustomer(?i, ?c) ∧ hasInvoiceDate(?i, ?date) ∧ 
+# swrlb:greaterThan(?date, ?holdDate) → isVoid(?i, true)
+
+# Rule: Finance charges apply to overdue invoices
+# Invoice(?i) ∧ hasDueDate(?i, ?due) ∧ hasOutstandingAmount(?i, ?amount) ∧
+# swrlb:greaterThan(?amount, 0) ∧ temporal:before(?due, ?today)
+# → accruesFinanceCharge(?i, ?charge)
+
+# ============================================================================
+# Annotations
+# ============================================================================
+
+ar:Customer rdfs:seeAlso <https://schema.org/Customer> ;
+    rdfs:isDefinedBy <http://accountex.org/ontology/accounts-receivables> .
+
+ar:Invoice rdfs:seeAlso <http://purl.org/goodrelations/v1#Invoice> ;
+    rdfs:isDefinedBy <http://accountex.org/ontology/accounts-receivables> .
+
+ar:Payment rdfs:seeAlso <http://purl.org/goodrelations/v1#PaymentMethod> ;
+    rdfs:isDefinedBy <http://accountex.org/ontology/accounts-receivables> .
+
+ar:ARAgent rdfs:seeAlso <https://github.com/agentjido/jido> ;
+    rdfs:isDefinedBy <http://accountex.org/ontology/accounts-receivables> .
+
+ar:AREvent rdfs:seeAlso <https://github.com/commanded/commanded> ;
+    rdfs:isDefinedBy <http://accountex.org/ontology/accounts-receivables> .
+```
+
+## Key Features of this Ontology
+
+### Comprehensive AR Domain Coverage
+The ontology captures all major aspects of the Accounts Receivables domain including:
+- **Customer management** with hierarchical relationships and multiple addresses/contacts
+- **Invoice processing** with line items, remarks, and various invoice types
+- **Payment handling** with applications to specific invoices
+- **Credit management** including credit limits and finance charges
+- **Supporting entities** like salespersons, payment terms, and tax codes
+
+### Integration with Standard Vocabularies
+The ontology leverages established vocabularies:
+- **FOAF** for modeling customers, contacts, and salespersons
+- **GoodRelations** for commercial transactions and pricing
+- **Schema.org** for addresses and employee information
+- **FIBO** for financial instruments and tax codes
+- **PROV-O** for tracking activities and provenance
+
+### Event Sourcing Support
+Complete modeling of AR-specific events aligned with Commanded:
+- Customer lifecycle events (creation, status changes)
+- Invoice events (creation, voiding, posting)
+- Payment events (receipt, application, voiding)
+- Credit management events (limit changes, finance charges)
+
+### Agentic Capabilities
+AR-specific agents for autonomous operations:
+- **InvoicingAgent** for automated invoice generation
+- **CollectionAgent** for dunning and follow-ups
+- **CreditManagementAgent** for risk assessment
+- **PaymentProcessingAgent** for payment application
+- **CustomerServiceAgent** for customer interactions
+
+### Business Rules and Constraints
+The ontology includes:
+- Cardinality constraints ensuring data integrity
+- Functional properties for unique identifiers
+- Disjointness axioms preventing invalid classifications
+- SWRL rules for business logic (finance charges, credit holds)
+
+## Usage Recommendations
+
+### Integration with Core System
+- Import the System Manager ontology for core system concepts
+- Use consistent namespaces across all domain ontologies
+- Leverage the modular application architecture for runtime flexibility
+
+### Extending the Ontology
+- Add domain-specific subclasses for specialized customer types
+- Include additional payment methods as needed
+- Extend agent capabilities for specific business processes
+- Add custom events for unique workflows
+
+### Reasoning and Validation
+- Use OWL 2 DL reasoners for consistency checking
+- Implement SHACL shapes for data validation
+- Apply SWRL rules for automated business logic
+- Monitor event sequences for process compliance
+
+### Event Sourcing Patterns
+- Map AR entities to Commanded aggregates
+- Use event properties for complete audit trails
+- Implement projections for read models
+- Support event replay for system recovery
+
+This ontology provides a semantic foundation for the Accounts Receivables domain, enabling intelligent reasoning, integration, and documentation of the system's architecture and behavior within the larger Accountex ERP system.
