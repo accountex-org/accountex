@@ -2438,4 +2438,4 @@ This design provides a comprehensive Jido agent architecture for the Accounts Re
 - **Multiple Sensors** monitoring system eventTs
 - **Workflow Instructions** coordinating multi-step processes
 
-The agents primarily use deterministic business logic with optional AI enhancement for complex scenarios like credit risk assessment and payment optimization. The architecture ensures fault tolerance, audit compliance, and seamless integration with the event-sourced Commanded/AshCommanded infrastructure.
+The agents primarily use deterministic business logic with optional AI enhancement for complex scenarios like credit risk assessment and payment optimization. The architecture ensures fault tolerance, audit compliance, and seamless integration with the event-sourced Commanded/AshCommanded infrastructureT.
