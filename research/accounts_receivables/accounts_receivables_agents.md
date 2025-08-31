@@ -1200,12 +1200,14 @@ end
 This comprehensive agent-based system for Accounts Receivables includes:
 
 ### **Core Components**
+
 - **15+ Specialized Agents** covering all AR domains
 - **50+ Actions** implementing business operations
 - **30+ Skills** providing domain expertise
 - **Instruction Templates** for common workflows
 
 ### **Key Capabilities**
+
 - **Autonomous Operation**: Agents handle routine tasks without human intervention
 - **Intelligent Decision Making**: ML-based credit evaluation and payment allocation
 - **Error Recovery**: Automatic error handling and compensation
@@ -1214,6 +1216,7 @@ This comprehensive agent-based system for Accounts Receivables includes:
 - **Monitoring & Observability**: Comprehensive system health tracking
 
 ### **Business Benefits**
+
 - **Reduced Processing Time**: 80% reduction in invoice-to-cash cycle
 - **Improved Accuracy**: 99.9% accuracy in calculations and allocations
 - **Enhanced Credit Management**: Proactive risk assessment and monitoring
@@ -1222,3 +1225,1217 @@ This comprehensive agent-based system for Accounts Receivables includes:
 - **Audit Trail**: Complete event sourcing for all operations
 
 The system seamlessly integrates with the Commanded event-sourcing framework and Ash domain modeling, providing a robust, scalable, and maintainable solution for enterprise AR operations.
+
+# Accounts Receivables Jido Agents Design
+
+## Executive Summary
+
+This document defines the Jido agents, actions, skills, and instructions for the Accounts Receivables modular application. The design follows event-sourced patterns, integrates with Commanded/AshCommanded, and emphasizes deterministic business logic with optional AI enhancement for complex scenarios.
+
+## Core Design Principles
+
+1. **Event-Driven Architecture**: Agents subscribe to domain events and emit signals for coordination
+2. **Deterministic Logic**: Most agents use rule-based processing with AI reserved for complex analysis
+3. **Modular Communication**: Agents communicate via Jido.Signal for loose coupling
+4. **Fault Tolerance**: Agents implement circuit breakers and graceful degradation
+5. **Audit Compliance**: All agent decisions are event-sourced for complete traceability
+
+## Agent Architecture
+
+### Agent Categories
+
+1. **Core Processing Agents**: Handle primary AR business operations
+2. **Monitoring Agents**: Track system health and business metrics
+3. **Integration Agents**: Manage cross-module communication
+4. **Analytical Agents**: Provide insights and risk assessment (AI-enhanced)
+5. **Automation Agents**: Execute scheduled and triggered workflows
+
+## Primary Agents
+
+### 1. Customer Credit Agent
+
+**Purpose**: Manages customer credit evaluation, monitoring, and risk assessment
+
+```elixir
+defmodule Accountex.AR.Agents.CustomerCreditAgent do
+  use Jido.Agent,
+    name: "customer_credit_agent",
+    description: "Monitors and manages customer credit limits and risk",
+    actions: [
+      Accountex.AR.Actions.EvaluateCreditLimit,
+      Accountex.AR.Actions.MonitorCreditExposure,
+      Accountex.AR.Actions.AssessCustomerRisk,
+      Accountex.AR.Actions.ProcessCreditHold,
+      Accountex.AR.Actions.ReleaseCreditHold
+    ],
+    sensors: [
+      Accountex.AR.Sensors.CustomerBalanceMonitor,
+      Accountex.AR.Sensors.PaymentBehaviorTracker
+    ],
+    schema: [
+      threshold_percentage: [type: :integer, default: 90],
+      auto_hold_enabled: [type: :boolean, default: true],
+      risk_model: [type: :string, default: "rule_based"],
+      monitoring_interval: [type: :integer, default: 3600]
+    ]
+
+  def handle_signal(%{type: "customer.balance_changed", data: data}, state) do
+    instructions = [
+      %Jido.Instruction{
+        action: "monitor_credit_exposure",
+        params: %{customer_id: data.customer_id}
+      },
+      %Jido.Instruction{
+        action: "assess_customer_risk",
+        params: %{customer_id: data.customer_id},
+        condition: fn result -> 
+          result.exposure_percentage > state.threshold_percentage 
+        end
+      }
+    ]
+    
+    {:ok, instructions, state}
+  end
+
+  def handle_signal(%{type: "credit.limit_exceeded", data: data}, state) do
+    if state.auto_hold_enabled do
+      instructions = [
+        %Jido.Instruction{
+          action: "process_credit_hold",
+          params: %{
+            customer_id: data.customer_id,
+            hold_type: :automatic,
+            reason: "Credit limit exceeded"
+          }
+        }
+      ]
+      {:ok, instructions, state}
+    else
+      # Emit notification signal for manual review
+      Jido.Signal.emit(%{
+        type: "credit.manual_review_required",
+        data: data
+      })
+      {:ok, [], state}
+    end
+  end
+end
+```
+
+### 2. Invoice Processing Agent
+
+**Purpose**: Manages invoice creation, validation, and lifecycle management
+
+```elixir
+defmodule Accountex.AR.Agents.InvoiceProcessingAgent do
+  use Jido.Agent,
+    name: "invoice_processing_agent",
+    description: "Handles invoice creation, validation, and processing",
+    actions: [
+      Accountex.AR.Actions.ValidateInvoiceData,
+      Accountex.AR.Actions.CalculateTaxes,
+      Accountex.AR.Actions.ApplyDiscounts,
+      Accountex.AR.Actions.AllocateInventory,
+      Accountex.AR.Actions.CreateInvoice,
+      Accountex.AR.Actions.AmendInvoice,
+      Accountex.AR.Actions.VoidInvoice
+    ],
+    skills: [
+      Accountex.AR.Skills.TaxCalculation,
+      Accountex.AR.Skills.PricingHierarchy,
+      Accountex.AR.Skills.DiscountApplication
+    ]
+
+  def process_invoice_creation(invoice_data, state) do
+    instructions = [
+      %Jido.Instruction{
+        action: "validate_invoice_data",
+        params: invoice_data,
+        error_handler: :validation_failed
+      },
+      %Jido.Instruction{
+        action: "apply_pricing_hierarchy",
+        skill: "pricing_hierarchy",
+        params: %{
+          customer_id: invoice_data.customer_id,
+          line_items: invoice_data.line_items
+        }
+      },
+      %Jido.Instruction{
+        action: "apply_discounts",
+        params: %{
+          customer_id: invoice_data.customer_id,
+          subtotal: :previous_result
+        }
+      },
+      %Jido.Instruction{
+        action: "calculate_taxes",
+        skill: "tax_calculation",
+        params: %{
+          ship_to_address: invoice_data.shipping_address,
+          taxable_amount: :previous_result
+        }
+      },
+      %Jido.Instruction{
+        action: "allocate_inventory",
+        params: %{line_items: invoice_data.line_items},
+        condition: fn _result -> invoice_data.requires_inventory end
+      },
+      %Jido.Instruction{
+        action: "create_invoice",
+        params: :accumulated_results
+      }
+    ]
+    
+    Jido.Agent.execute_workflow(self(), instructions, state)
+  end
+end
+```
+
+### 3. Payment Application Agent
+
+**Purpose**: Intelligently applies customer payments to outstanding invoices
+
+```elixir
+defmodule Accountex.AR.Agents.PaymentApplicationAgent do
+  use Jido.Agent,
+    name: "payment_application_agent",
+    description: "Applies payments to invoices with optimization",
+    actions: [
+      Accountex.AR.Actions.IdentifyOpenInvoices,
+      Accountex.AR.Actions.CalculateDiscountEligibility,
+      Accountex.AR.Actions.OptimizePaymentAllocation,
+      Accountex.AR.Actions.ApplyPaymentToInvoice,
+      Accountex.AR.Actions.CreateOpenCredit
+    ],
+    skills: [
+      Accountex.AR.Skills.PaymentOptimization,
+      Accountex.AR.Skills.DiscountCalculation
+    ],
+    schema: [
+      application_strategy: [type: :atom, default: :oldest_first],
+      maximize_discounts: [type: :boolean, default: true],
+      auto_apply: [type: :boolean, default: true]
+    ]
+
+  def apply_payment(payment_data, state) do
+    strategy = determine_strategy(payment_data, state)
+    
+    instructions = case strategy do
+      :auto_apply -> build_auto_apply_instructions(payment_data, state)
+      :manual_apply -> build_manual_apply_instructions(payment_data)
+      :optimized -> build_optimized_instructions(payment_data, state)
+    end
+    
+    {:ok, instructions, state}
+  end
+
+  defp build_optimized_instructions(payment_data, state) do
+    # Uses AI-enhanced optimization when configured
+    [
+      %Jido.Instruction{
+        action: "identify_open_invoices",
+        params: %{customer_id: payment_data.customer_id}
+      },
+      %Jido.Instruction{
+        action: "calculate_discount_eligibility",
+        skill: "discount_calculation",
+        params: %{
+          invoices: :previous_result,
+          payment_date: payment_data.payment_date
+        }
+      },
+      %Jido.Instruction{
+        action: "optimize_payment_allocation",
+        skill: "payment_optimization",
+        params: %{
+          payment_amount: payment_data.amount,
+          eligible_invoices: :previous_result,
+          maximize_discounts: state.maximize_discounts
+        },
+        use_ai: true  # AI optimization for complex scenarios
+      },
+      %Jido.Instruction{
+        action: "apply_payment_to_invoice",
+        params: :previous_result,
+        iterate: true  # Apply to each invoice in optimization result
+      }
+    ]
+  end
+end
+```
+
+### 4. Recurring Invoice Agent
+
+**Purpose**: Manages automated recurring invoice generation
+
+```elixir
+defmodule Accountex.AR.Agents.RecurringInvoiceAgent do
+  use Jido.Agent,
+    name: "recurring_invoice_agent",
+    description: "Generates invoices from recurring templates",
+    actions: [
+      Accountex.AR.Actions.IdentifyDueTemplates,
+      Accountex.AR.Actions.ValidateTemplateEligibility,
+      Accountex.AR.Actions.UpdateRecurringPricing,
+      Accountex.AR.Actions.GenerateRecurringInvoice,
+      Accountex.AR.Actions.ScheduleNextGeneration
+    ],
+    sensors: [
+      Accountex.AR.Sensors.RecurringScheduleMonitor
+    ]
+
+  def handle_schedule_trigger(trigger_data, state) do
+    instructions = [
+      %Jido.Instruction{
+        action: "identify_due_templates",
+        params: %{
+          generation_date: trigger_data.date,
+          customer_filter: trigger_data.customer_ids
+        }
+      },
+      %Jido.Instruction{
+        action: "validate_template_eligibility",
+        params: %{templates: :previous_result},
+        parallel: true  # Validate multiple templates concurrently
+      },
+      %Jido.Instruction{
+        action: "generate_recurring_invoice",
+        params: :previous_result,
+        iterate: true,
+        error_handler: :handle_generation_error
+      },
+      %Jido.Instruction{
+        action: "schedule_next_generation",
+        params: :accumulated_results
+      }
+    ]
+    
+    {:ok, instructions, state}
+  end
+
+  defp handle_generation_error(error, context) do
+    # Log error and continue with other templates
+    Jido.Signal.emit(%{
+      type: "recurring.generation_failed",
+      data: %{
+        template_id: context.template_id,
+        error: error,
+        retry_strategy: determine_retry_strategy(error)
+      }
+    })
+    :continue
+  end
+end
+```
+
+### 5. Finance Charge Agent
+
+**Purpose**: Calculates and applies finance charges to past-due accounts
+
+```elixir
+defmodule Accountex.AR.Agents.FinanceChargeAgent do
+  use Jido.Agent,
+    name: "finance_charge_agent",
+    description: "Manages finance charge calculation and application",
+    actions: [
+      Accountex.AR.Actions.IdentifyPastDueAccounts,
+      Accountex.AR.Actions.CheckChargeEligibility,
+      Accountex.AR.Actions.CalculateFinanceCharge,
+      Accountex.AR.Actions.ApplyFinanceCharge,
+      Accountex.AR.Actions.NotifyCustomer
+    ],
+    skills: [
+      Accountex.AR.Skills.InterestCalculation,
+      Accountex.AR.Skills.CompoundInterest
+    ]
+
+  def process_finance_charges(charge_date, state) do
+    instructions = [
+      %Jido.Instruction{
+        action: "identify_past_due_accounts",
+        params: %{
+          as_of_date: charge_date,
+          minimum_days_past_due: state.grace_period
+        }
+      },
+      %Jido.Instruction{
+        action: "check_charge_eligibility",
+        params: %{
+          customers: :previous_result,
+          minimum_balance: state.minimum_balance_threshold
+        },
+        filter: true  # Filter out ineligible customers
+      },
+      %Jido.Instruction{
+        action: "calculate_finance_charge",
+        skill: determine_calculation_skill(state),
+        params: %{
+          eligible_accounts: :previous_result,
+          charge_rate: state.charge_rate,
+          compound: state.compound_interest_enabled
+        },
+        parallel: true
+      },
+      %Jido.Instruction{
+        action: "apply_finance_charge",
+        params: :previous_result,
+        batch_size: 100  # Process in batches for performance
+      },
+      %Jido.Instruction{
+        action: "notify_customer",
+        params: :accumulated_results,
+        async: true  # Don't wait for notifications
+      }
+    ]
+    
+    {:ok, instructions, state}
+  end
+end
+```
+
+### 6. Bank Deposit Agent
+
+**Purpose**: Groups receipts for bank deposits and manages verification
+
+```elixir
+defmodule Accountex.AR.Agents.BankDepositAgent do
+  use Jido.Agent,
+    name: "bank_deposit_agent",
+    description: "Manages bank deposit creation and verification",
+    actions: [
+      Accountex.AR.Actions.SelectReceiptsForDeposit,
+      Accountex.AR.Actions.ValidateDepositBalance,
+      Accountex.AR.Actions.CreateBankDeposit,
+      Accountex.AR.Actions.VerifyDeposit,
+      Accountex.AR.Actions.ReconcileDeposit
+    ],
+    skills: [
+      Accountex.AR.Skills.DepositOptimization
+    ]
+
+  def create_deposit(deposit_params, state) do
+    instructions = [
+      %Jido.Instruction{
+        action: "select_receipts_for_deposit",
+        skill: "deposit_optimization",
+        params: %{
+          bank_account_id: deposit_params.bank_account_id,
+          deposit_date: deposit_params.date,
+          selection_criteria: deposit_params.criteria
+        }
+      },
+      %Jido.Instruction{
+        action: "validate_deposit_balance",
+        params: %{
+          selected_receipts: :previous_result,
+          expected_total: deposit_params.registered_amount
+        }
+      },
+      %Jido.Instruction{
+        action: "create_bank_deposit",
+        params: :previous_result,
+        condition: fn result -> result.balanced end
+      }
+    ]
+    
+    {:ok, instructions, state}
+  end
+
+  def verify_deposit(verification_data, state) do
+    instructions = [
+      %Jido.Instruction{
+        action: "verify_deposit",
+        params: %{
+          deposit_id: verification_data.deposit_id,
+          bank_confirmation: verification_data.confirmation
+        }
+      },
+      %Jido.Instruction{
+        action: "reconcile_deposit",
+        params: :previous_result,
+        condition: fn result -> result.verified end
+      }
+    ]
+    
+    {:ok, instructions, state}
+  end
+end
+```
+
+### 7. Currency Revaluation Agent
+
+**Purpose**: Manages multi-currency revaluation for unrealized gains/losses
+
+```elixir
+defmodule Accountex.AR.Agents.CurrencyRevaluationAgent do
+  use Jido.Agent,
+    name: "currency_revaluation_agent",
+    description: "Calculates foreign currency revaluation adjustments",
+    actions: [
+      Accountex.AR.Actions.GetCurrentExchangeRates,
+      Accountex.AR.Actions.IdentifyForeignBalances,
+      Accountex.AR.Actions.CalculateUnrealizedGainLoss,
+      Accountex.AR.Actions.PostRevaluationEntries
+    ],
+    skills: [
+      Accountex.AR.Skills.ExchangeRateAnalysis
+    ],
+    schema: [
+      revaluation_threshold: [type: :decimal, default: 0.01],
+      auto_post: [type: :boolean, default: false],
+      use_ai_prediction: [type: :boolean, default: false]
+    ]
+
+  def perform_revaluation(revaluation_params, state) do
+    instructions = [
+      %Jido.Instruction{
+        action: "get_current_exchange_rates",
+        params: %{
+          currencies: revaluation_params.currencies,
+          rate_date: revaluation_params.date,
+          source: revaluation_params.rate_source
+        }
+      },
+      %Jido.Instruction{
+        action: "identify_foreign_balances",
+        params: %{
+          as_of_date: revaluation_params.date,
+          customer_scope: revaluation_params.customer_filter
+        }
+      },
+      %Jido.Instruction{
+        action: "calculate_unrealized_gain_loss",
+        skill: "exchange_rate_analysis",
+        params: %{
+          balances: :previous_result,
+          exchange_rates: :first_result,
+          use_prediction: state.use_ai_prediction
+        },
+        use_ai: state.use_ai_prediction
+      },
+      %Jido.Instruction{
+        action: "post_revaluation_entries",
+        params: :previous_result,
+        condition: fn result -> 
+          state.auto_post || result.requires_manual_approval == false
+        end
+      }
+    ]
+    
+    {:ok, instructions, state}
+  end
+end
+```
+
+### 8. Period Closing Agent
+
+**Purpose**: Orchestrates AR period-end closing process
+
+```elixir
+defmodule Accountex.AR.Agents.PeriodClosingAgent do
+  use Jido.Agent,
+    name: "period_closing_agent",
+    description: "Manages AR period-end closing workflow",
+    actions: [
+      Accountex.AR.Actions.ValidateTransactionCompleteness,
+      Accountex.AR.Actions.CalculateCustomerAging,
+      Accountex.AR.Actions.SynchronizeWithGL,
+      Accountex.AR.Actions.GenerateClosingReports,
+      Accountex.AR.Actions.ClosePeriod
+    ],
+    skills: [
+      Accountex.AR.Skills.ClosingValidation
+    ]
+
+  def close_period(period_params, state) do
+    instructions = [
+      %Jido.Instruction{
+        action: "validate_transaction_completeness",
+        skill: "closing_validation",
+        params: %{
+          period_id: period_params.period_id,
+          validation_rules: state.validation_rules
+        }
+      },
+      %Jido.Instruction{
+        action: "calculate_customer_aging",
+        params: %{
+          aging_date: period_params.closing_date,
+          aging_buckets: state.aging_configuration
+        },
+        parallel: true
+      },
+      %Jido.Instruction{
+        action: "synchronize_with_gl",
+        params: %{
+          period_id: period_params.period_id,
+          sync_date: period_params.closing_date
+        },
+        retry: 3  # Retry GL sync up to 3 times
+      },
+      %Jido.Instruction{
+        action: "generate_closing_reports",
+        params: :accumulated_results,
+        async: true
+      },
+      %Jido.Instruction{
+        action: "close_period",
+        params: %{
+          period_id: period_params.period_id,
+          closing_type: period_params.closing_type
+        },
+        condition: fn results -> 
+          all_validations_passed?(results)
+        end
+      }
+    ]
+    
+    {:ok, instructions, state}
+  end
+end
+```
+
+### 9. Credit Risk Assessment Agent (AI-Enhanced)
+
+**Purpose**: Analyzes customer credit risk using both rules and AI
+
+```elixir
+defmodule Accountex.AR.Agents.CreditRiskAssessmentAgent do
+  use Jido.Agent,
+    name: "credit_risk_assessment_agent",
+    description: "AI-enhanced credit risk analysis and prediction",
+    actions: [
+      Accountex.AR.Actions.CollectCustomerData,
+      Accountex.AR.Actions.AnalyzePaymentHistory,
+      Accountex.AR.Actions.PredictPaymentBehavior,
+      Accountex.AR.Actions.CalculateRiskScore,
+      Accountex.AR.Actions.RecommendCreditAction
+    ],
+    skills: [
+      Accountex.AR.Skills.PaymentPatternAnalysis,
+      Accountex.AR.Skills.RiskScoring,
+      Accountex.AR.Skills.MLPrediction
+    ]
+
+  def assess_credit_risk(customer_id, state) do
+    instructions = [
+      %Jido.Instruction{
+        action: "collect_customer_data",
+        params: %{
+          customer_id: customer_id,
+          data_points: [:payment_history, :order_history, :credit_events]
+        }
+      },
+      %Jido.Instruction{
+        action: "analyze_payment_history",
+        skill: "payment_pattern_analysis",
+        params: %{
+          customer_data: :previous_result,
+          lookback_period: state.analysis_period
+        }
+      },
+      %Jido.Instruction{
+        action: "predict_payment_behavior",
+        skill: "ml_prediction",
+        params: %{
+          historical_patterns: :previous_result,
+          external_factors: get_external_factors()
+        },
+        use_ai: true  # Use ML model for prediction
+      },
+      %Jido.Instruction{
+        action: "calculate_risk_score",
+        skill: "risk_scoring",
+        params: %{
+          payment_analysis: :second_result,
+          prediction: :previous_result,
+          weight_configuration: state.risk_weights
+        }
+      },
+      %Jido.Instruction{
+        action: "recommend_credit_action",
+        params: %{
+          risk_score: :previous_result,
+          current_credit_limit: :from_customer_data
+        },
+        use_ai: true  # AI recommendation based on patterns
+      }
+    ]
+    
+    {:ok, instructions, state}
+  end
+end
+```
+
+### 10. Invoice Import Agent
+
+**Purpose**: Processes bulk invoice imports with validation
+
+```elixir
+defmodule Accountex.AR.Agents.InvoiceImportAgent do
+  use Jido.Agent,
+    name: "invoice_import_agent",
+    description: "Handles bulk invoice import processing",
+    actions: [
+      Accountex.AR.Actions.ValidateImportFile,
+      Accountex.AR.Actions.ParseImportData,
+      Accountex.AR.Actions.ValidateBusinessRules,
+      Accountex.AR.Actions.CreateImportedInvoices,
+      Accountex.AR.Actions.GenerateImportReport
+    ],
+    skills: [
+      Accountex.AR.Skills.DataMapping,
+      Accountex.AR.Skills.ValidationRules
+    ]
+
+  def process_import(import_params, state) do
+    instructions = [
+      %Jido.Instruction{
+        action: "validate_import_file",
+        params: %{
+          file_path: import_params.file_path,
+          structure_id: import_params.structure_id
+        }
+      },
+      %Jido.Instruction{
+        action: "parse_import_data",
+        skill: "data_mapping",
+        params: %{
+          file_content: :previous_result,
+          mapping_configuration: import_params.field_mappings
+        }
+      },
+      %Jido.Instruction{
+        action: "validate_business_rules",
+        skill: "validation_rules",
+        params: %{
+          parsed_invoices: :previous_result,
+          validation_level: state.validation_strictness
+        },
+        batch_size: 500
+      },
+      %Jido.Instruction{
+        action: "create_imported_invoices",
+        params: %{
+          valid_invoices: :previous_result.valid,
+          creation_options: import_params.options
+        },
+        parallel: true,
+        batch_size: 100
+      },
+      %Jido.Instruction{
+        action: "generate_import_report",
+        params: :accumulated_results
+      }
+    ]
+    
+    {:ok, instructions, state}
+  end
+end
+```
+
+## Supporting Actions
+
+### Core Business Actions
+
+```elixir
+defmodule Accountex.AR.Actions.EvaluateCreditLimit do
+  use Jido.Action,
+    name: "evaluate_credit_limit",
+    description: "Evaluates customer credit limit based on history and risk"
+
+  def execute(params, context) do
+    customer = get_customer(params.customer_id)
+    payment_history = get_payment_history(customer.id)
+    
+    evaluation = %{
+      current_limit: customer.credit_limit,
+      outstanding_balance: customer.outstanding_balance,
+      average_payment_days: calculate_average_days(payment_history),
+      payment_reliability: assess_reliability(payment_history),
+      recommended_limit: calculate_recommended_limit(customer, payment_history)
+    }
+    
+    {:ok, evaluation}
+  end
+end
+
+defmodule Accountex.AR.Actions.CalculateTaxes do
+  use Jido.Action,
+    name: "calculate_taxes",
+    description: "Calculates taxes based on jurisdiction and rules"
+
+  def execute(params, context) do
+    tax_code = get_tax_code(params.ship_to_address)
+    tax_entities = get_tax_entities(tax_code)
+    
+    tax_calculations = Enum.map(tax_entities, fn entity ->
+      calculate_entity_tax(entity, params.taxable_amount)
+    end)
+    
+    total_tax = Enum.sum(Enum.map(tax_calculations, & &1.amount))
+    
+    {:ok, %{
+      tax_code: tax_code,
+      calculations: tax_calculations,
+      total_tax: total_tax
+    }}
+  end
+end
+
+defmodule Accountex.AR.Actions.OptimizePaymentAllocation do
+  use Jido.Action,
+    name: "optimize_payment_allocation",
+    description: "Optimizes payment allocation across invoices"
+
+  def execute(params, context) do
+    # This action can use AI when use_ai: true is specified
+    allocation = if context[:use_ai] do
+      # Use AI model for complex optimization
+      ai_optimize_allocation(params)
+    else
+      # Use deterministic algorithm
+      rule_based_optimization(params)
+    end
+    
+    {:ok, allocation}
+  end
+
+  defp rule_based_optimization(params) do
+    # Apply oldest-first with discount maximization
+    invoices = params.eligible_invoices
+    |> sort_by_optimization_criteria(params.maximize_discounts)
+    |> allocate_payment(params.payment_amount)
+    
+    %{
+      allocations: invoices,
+      total_allocated: calculate_total(invoices),
+      discounts_captured: calculate_discounts(invoices)
+    }
+  end
+end
+```
+
+## Skills
+
+### Business Logic Skills
+
+```elixir
+defmodule Accountex.AR.Skills.TaxCalculation do
+  use Jido.Skill,
+    name: "tax_calculation",
+    description: "Complex tax calculation logic"
+
+  def apply(params, context) do
+    # Handles multi-jurisdiction tax calculation
+    # Applies rounding rules, thresholds, and exemptions
+    tax_result = TaxEngine.calculate(
+      params.ship_to_address,
+      params.taxable_amount,
+      params.tax_exemptions
+    )
+    
+    {:ok, tax_result}
+  end
+end
+
+defmodule Accountex.AR.Skills.PricingHierarchy do
+  use Jido.Skill,
+    name: "pricing_hierarchy",
+    description: "Applies customer-specific pricing rules"
+
+  def apply(params, context) do
+    # Implements pricing hierarchy:
+    # 1. Customer-specific pricing
+    # 2. Customer price code
+    # 3. Promotional pricing
+    # 4. Standard pricing
+    
+    prices = params.line_items
+    |> Enum.map(&apply_pricing_rules(&1, params.customer_id))
+    |> apply_volume_discounts()
+    
+    {:ok, prices}
+  end
+end
+
+defmodule Accountex.AR.Skills.PaymentOptimization do
+  use Jido.Skill,
+    name: "payment_optimization",
+    description: "Optimizes payment allocation strategy"
+
+  def apply(params, context) do
+    strategy = determine_best_strategy(params)
+    
+    allocation = case strategy do
+      :maximize_discounts -> 
+        allocate_for_discounts(params.eligible_invoices, params.payment_amount)
+      :minimize_past_due ->
+        allocate_by_age(params.eligible_invoices, params.payment_amount)
+      :weighted_optimization ->
+        weighted_allocation(params)
+    end
+    
+    {:ok, allocation}
+  end
+end
+
+defmodule Accountex.AR.Skills.MLPrediction do
+  use Jido.Skill,
+    name: "ml_prediction",
+    description: "Machine learning prediction for credit risk",
+    requires_ai: true
+
+  def apply(params, context) do
+    # This skill uses AI/ML models when available
+    # Falls back to statistical prediction if AI unavailable
+    
+    prediction = if ai_available?() do
+      model = load_prediction_model()
+      features = extract_features(params.historical_patterns)
+      model.predict(features)
+    else
+      statistical_prediction(params.historical_patterns)
+    end
+    
+    {:ok, prediction}
+  end
+end
+```
+
+## Sensors
+
+### Event Stream Sensors
+
+```elixir
+defmodule Accountex.AR.Sensors.CustomerBalanceMonitor do
+  use Jido.Sensor,
+    name: "customer_balance_monitor",
+    description: "Monitors customer balance changes"
+
+  def mount(opts) do
+    # Subscribe to balance-affecting events
+    Commanded.EventStore.subscribe_to_stream(
+      "customer_balance_stream",
+      &handle_event/3,
+      start_from: :current
+    )
+    {:ok, opts}
+  end
+
+  def handle_event(%InvoiceCreated{} = event, metadata, state) do
+    Jido.Signal.emit(%{
+      type: "customer.balance_changed",
+      data: %{
+        customer_id: event.customer_id,
+        change_amount: event.total_amount,
+        change_type: :increase,
+        new_balance: calculate_new_balance(event)
+      }
+    })
+    {:noreply, state}
+  end
+
+  def handle_event(%PaymentApplied{} = event, metadata, state) do
+    Jido.Signal.emit(%{
+      type: "customer.balance_changed",
+      data: %{
+        customer_id: event.customer_id,
+        change_amount: event.applied_amount,
+        change_type: :decrease,
+        new_balance: calculate_new_balance(event)
+      }
+    })
+    {:noreply, state}
+  end
+end
+
+defmodule Accountex.AR.Sensors.RecurringScheduleMonitor do
+  use Jido.Sensor,
+    name: "recurring_schedule_monitor",
+    description: "Monitors recurring invoice schedules"
+
+  def mount(opts) do
+    # Schedule periodic checks
+    schedule_next_check()
+    {:ok, %{check_interval: opts[:interval] || :timer.minutes(15)}}
+  end
+
+  def handle_info(:check_schedules, state) do
+    due_templates = find_due_templates()
+    
+    if length(due_templates) > 0 do
+      Jido.Signal.emit(%{
+        type: "recurring.templates_due",
+        data: %{
+          templates: due_templates,
+          generation_date: Date.utc_today()
+        }
+      })
+    end
+    
+    schedule_next_check()
+    {:noreply, state}
+  end
+end
+```
+
+## Workflow Instructions
+
+### Complex Workflow Example: Customer Onboarding
+
+```elixir
+defmodule Accountex.AR.Workflows.CustomerOnboarding do
+  def onboarding_instructions(customer_data) do
+    [
+      # Step 1: Create customer
+      %Jido.Instruction{
+        action: "create_customer",
+        agent: "customer_management_agent",
+        params: customer_data,
+        error_handler: :rollback
+      },
+      
+      # Step 2: Evaluate credit
+      %Jido.Instruction{
+        action: "evaluate_credit_limit",
+        agent: "customer_credit_agent",
+        params: %{customer_id: :previous_result.customer_id},
+        async: false
+      },
+      
+      # Step 3: Risk assessment (AI-enhanced)
+      %Jido.Instruction{
+        action: "assess_credit_risk",
+        agent: "credit_risk_assessment_agent",
+        params: %{customer_id: :first_result.customer_id},
+        use_ai: true,
+        condition: fn result -> 
+          result.credit_limit > 10_000
+        end
+      },
+      
+      # Step 4: Setup payment terms
+      %Jido.Instruction{
+        action: "assign_payment_terms",
+        agent: "customer_management_agent",
+        params: %{
+          customer_id: :first_result.customer_id,
+          terms: determine_terms(:accumulated_results)
+        }
+      },
+      
+      # Step 5: Send welcome communication
+      %Jido.Instruction{
+        action: "send_welcome_package",
+        agent: "communication_agent",
+        params: %{
+          customer_id: :first_result.customer_id,
+          credit_limit: :second_result.recommended_limit
+        },
+        async: true
+      }
+    ]
+  end
+end
+```
+
+## Agent Communication Patterns
+
+### Signal-Based Coordination
+
+```elixir
+# Agent A emits signal
+Jido.Signal.emit(%{
+  type: "invoice.created",
+  data: %{invoice_id: invoice_id, customer_id: customer_id},
+  source: "invoice_processing_agent"
+})
+
+# Agent B subscribes and responds
+def handle_signal(%{type: "invoice.created", data: data}, state) do
+  # Update credit exposure
+  # Check credit limits
+  # Emit new signals if needed
+end
+
+# Cross-module signals
+Jido.Signal.emit(%{
+  type: "ar.invoice.posted_to_gl",
+  data: %{invoice_id: id, gl_entries: entries},
+  target_module: :general_ledger
+})
+```
+
+## Fault Tolerance Patterns
+
+### Circuit Breaker Implementation
+
+```elixir
+defmodule Accountex.AR.Agents.Base do
+  defmacro __using__(_opts) do
+    quote do
+      def with_circuit_breaker(action, params, opts \\ []) do
+        circuit_name = opts[:circuit] || :default
+        
+        case CircuitBreaker.call(circuit_name, fn ->
+          execute_action(action, params)
+        end) do
+          {:ok, result} -> 
+            {:ok, result}
+          {:error, :circuit_open} ->
+            handle_circuit_open(action, params)
+          {:error, reason} ->
+            handle_action_error(action, params, reason)
+        end
+      end
+      
+      defp handle_circuit_open(action, params) do
+        # Fallback to cached data or degraded mode
+        # Queue for retry when circuit closes
+        # Emit monitoring signal
+      end
+    end
+  end
+end
+```
+
+## Configuration Management
+
+### Agent Configuration
+
+```elixir
+# config/agents.exs
+config :accountex_ar, :agents,
+  customer_credit_agent: [
+    threshold_percentage: 90,
+    auto_hold_enabled: true,
+    risk_model: "rule_based",
+    monitoring_interval: 3600
+  ],
+  payment_application_agent: [
+    application_strategy: :oldest_first,
+    maximize_discounts: true,
+    auto_apply: true
+  ],
+  credit_risk_assessment_agent: [
+    use_ai: true,
+    model_version: "v2.1",
+    analysis_period: 365,
+    risk_weights: %{
+      payment_history: 0.4,
+      credit_utilization: 0.3T,
+      account_age: 0.2,
+      external_factors: 0.1
+    }
+  ]
+```
+
+## Monitoring and Observability
+
+### Agent Metrics
+
+```elixir
+defmodule Accountex.AR.Agents.Metrics do
+  def track_agent_performance(agent_name, action, result, duration) do
+    Telemetry.execute(
+      [:accountex, :ar, :agent, :action],
+      %{duration: duration},
+      %{
+        agent: agent_name,
+        action: action,
+        status: result_status(result)
+      }
+    )
+  end
+  
+  def track_signal_emission(signal_type, data) do
+    Telemetry.execute(
+      [:accountex, :ar, :signal],
+      %{count: 1},
+      %{type: signal_type, size: byte_size(data)}
+    )
+  end
+end
+```
+
+## Testing Strategy
+
+### Agent Testing
+
+```elixir
+defmodule Accountex.AR.Agents.CustomerCreditAgentTest do
+  use ExUnit.Case
+  
+  test "automatically places customer on hold when credit exceeded" do
+    # Setup
+    agent = start_supervised!(CustomerCreditAgent)
+    customer = create_test_customer(credit_limit: 10_000)
+    
+    # Trigger credit limit breach
+    signal = %{
+      type: "customer.balance_changed",
+      data: %{
+        customer_id: customer.id,
+        new_balance: 11_000
+      }
+    }
+    
+    # Execute
+    {:ok, instructions, _state} = 
+      CustomerCreditAgent.handle_signal(signal, %{
+        auto_hold_enabled: true,
+        threshold_percentage: 90
+      })
+    
+    # Assert
+    assert length(instructions) == 1
+    assert hd(instructions).action == "process_credit_hold"
+  end
+end
+```
+
+## Deployment Considerations
+
+### Agent Supervision Tree
+
+```elixir
+defmodule Accountex.AR.Agents.Supervisor do
+  use Supervisor
+  
+  def start_link(opts) do
+    Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
+  end
+  
+  def init(_opts) do
+    children = [
+      # Core agents - always running
+      {CustomerCreditAgent, []},
+      {InvoiceProcessingAgent, []},
+      {PaymentApplicationAgent, []},
+      
+      # Scheduled agents - started on demand
+      {DynamicSupervisor, strategy: :one_for_one, name: ScheduledAgents},
+      
+      # Sensor processes
+      {CustomerBalanceMonitor, []},
+      {RecurringScheduleMonitor, []}
+    ]
+    
+    Supervisor.init(children, strategy: :one_for_one)
+  end
+end
+```
+
+## Summary
+
+This design provides a comprehensive Jido agent architecture for the Accounts Receivables module with:
+
+- **10 Primary Agents** handling core AR operations
+- **15+ Actions** executing specific business operations
+- **8+ Skills** encapsulating complex business logic
+- **Multiple Sensors** monitoring system eventTs
+- **Workflow Instructions** coordinating multi-step processes
+
+The agents primarily use deterministic business logic with optional AI enhancement for complex scenarios like credit risk assessment and payment optimization. The architecture ensures fault tolerance, audit compliance, and seamless integration with the event-sourced Commanded/AshCommanded infrastructure.
