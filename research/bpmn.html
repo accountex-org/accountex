@@ -1,0 +1,981 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BPMN Diagrams - Jido Agent Interactions</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.6.1/mermaid.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            background: white;
+            border-radius: 15px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        h1 {
+            color: #2c3e50;
+            border-bottom: 3px solid #667eea;
+            padding-bottom: 15px;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+        }
+        h2 {
+            color: #34495e;
+            margin-top: 40px;
+            margin-bottom: 20px;
+            font-size: 1.8em;
+            border-left: 4px solid #764ba2;
+            padding-left: 15px;
+        }
+        h3 {
+            color: #555;
+            margin-top: 25px;
+            font-size: 1.3em;
+        }
+        .process-section {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 25px;
+            margin: 30px 0;
+            border: 1px solid #e0e0e0;
+        }
+        .mermaid {
+            text-align: center;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .description {
+            background: #e8f4f8;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            border-left: 4px solid #3498db;
+        }
+        .legend {
+            background: #fff3cd;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            border: 1px solid #ffc107;
+        }
+        .legend h4 {
+            margin-top: 0;
+            color: #856404;
+        }
+        .legend-item {
+            display: inline-block;
+            margin: 10px 20px 10px 0;
+        }
+        .legend-symbol {
+            display: inline-block;
+            width: 30px;
+            height: 20px;
+            margin-right: 10px;
+            vertical-align: middle;
+            border-radius: 4px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            background: white;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border: 1px solid #ddd;
+        }
+        th {
+            background: #667eea;
+            color: white;
+            font-weight: bold;
+        }
+        tr:nth-child(even) {
+            background: #f9f9f9;
+        }
+        .note {
+            background: #fff9e6;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            border: 1px solid #ffeb3b;
+            font-style: italic;
+        }
+        code {
+            background: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            color: #d63384;
+        }
+        .swim-lane {
+            background: #f0f7ff;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔄 BPMN Documentation: Jido Agent Interactions</h1>
+        
+        <div class="description">
+            <p><strong>Purpose:</strong> This document illustrates how Jido agents, actions, and signals interact in various business processes using BPMN (Business Process Model and Notation) diagrams. Each diagram shows the flow of control, data, and signals between different agents and system components.</p>
+        </div>
+
+        <div class="legend">
+            <h4>📋 BPMN Symbol Legend</h4>
+            <div class="legend-item">
+                <span class="legend-symbol" style="background: #90EE90; border: 2px solid #228B22; border-radius: 50%;"></span>
+                <strong>Start Event:</strong> Process initiation
+            </div>
+            <div class="legend-item">
+                <span class="legend-symbol" style="background: #FFB6C1; border: 2px solid #DC143C; border-radius: 50%;"></span>
+                <strong>End Event:</strong> Process completion
+            </div>
+            <div class="legend-item">
+                <span class="legend-symbol" style="background: #87CEEB; border: 2px solid #4682B4;"></span>
+                <strong>Task/Action:</strong> Agent action or activity
+            </div>
+            <div class="legend-item">
+                <span class="legend-symbol" style="background: #FFD700; border: 2px solid #FFA500; transform: rotate(45deg);"></span>
+                <strong>Gateway:</strong> Decision point
+            </div>
+            <div class="legend-item">
+                <span class="legend-symbol" style="background: #DDA0DD; border: 2px solid #9370DB;"></span>
+                <strong>Signal:</strong> Inter-agent communication
+            </div>
+        </div>
+
+        <!-- Process 1: E-Commerce Order Processing -->
+        <div class="process-section">
+            <h2>1. E-Commerce Order Processing with Multiple Agents</h2>
+            
+            <div class="description">
+                <p>This process shows how multiple specialized agents collaborate to process an e-commerce order, including inventory management, payment processing, and fulfillment.</p>
+            </div>
+
+            <h3>Agent Swim Lanes</h3>
+            <div class="mermaid">
+graph TB
+    subgraph Customer["👤 Customer"]
+        Start([Place Order]) --> OrderData[Order Details]
+    end
+    
+    subgraph OrderAgent["📦 Order Processing Agent"]
+        OrderData --> ValidateOrder{Validate Order}
+        ValidateOrder -->|Valid| CreateInstruction[Create Instructions]
+        ValidateOrder -->|Invalid| RejectOrder[Send Rejection Signal]
+        CreateInstruction --> DispatchSignal1[Dispatch Inventory Signal]
+    end
+    
+    subgraph InventoryAgent["📊 Inventory Agent"]
+        DispatchSignal1 --> ReceiveInvSignal[Receive Signal]
+        ReceiveInvSignal --> CheckInventory[Execute CheckInventory Action]
+        CheckInventory --> InvDecision{Stock Available?}
+        InvDecision -->|Yes| ReserveStock[Execute ReserveStock Action]
+        InvDecision -->|No| StockError[Signal: Out of Stock]
+        ReserveStock --> InvConfirm[Signal: Stock Reserved]
+    end
+    
+    subgraph PaymentAgent["💳 Payment Processing Agent"]
+        InvConfirm --> ReceivePaySignal[Receive Payment Signal]
+        ReceivePaySignal --> ProcessPayment[Execute ProcessPayment Action]
+        ProcessPayment --> PayDecision{Payment Success?}
+        PayDecision -->|Yes| PayConfirm[Signal: Payment Complete]
+        PayDecision -->|No| PayError[Signal: Payment Failed]
+    end
+    
+    subgraph FulfillmentAgent["🚚 Fulfillment Agent"]
+        PayConfirm --> ReceiveFulSignal[Receive Fulfillment Signal]
+        ReceiveFulSignal --> CreateShipment[Execute CreateShipment Action]
+        CreateShipment --> AssignCarrier[Execute AssignCarrier Action]
+        AssignCarrier --> GenerateLabel[Execute GenerateLabel Action]
+        GenerateLabel --> ShipConfirm[Signal: Shipment Created]
+    end
+    
+    subgraph NotificationAgent["📧 Notification Agent"]
+        ShipConfirm --> ReceiveNotSignal[Receive Notification Signal]
+        PayError --> ReceiveNotSignal
+        StockError --> ReceiveNotSignal
+        RejectOrder --> ReceiveNotSignal
+        
+        ReceiveNotSignal --> DetermineTemplate{Select Template}
+        DetermineTemplate -->|Success| SendConfirmation[Send Order Confirmation]
+        DetermineTemplate -->|Error| SendErrorNotice[Send Error Notice]
+        SendConfirmation --> End1([Order Complete])
+        SendErrorNotice --> End2([Order Failed])
+    end
+    
+    style Start fill:#90EE90
+    style End1 fill:#98FB98
+    style End2 fill:#FFB6C1
+    style ValidateOrder fill:#FFD700
+    style InvDecision fill:#FFD700
+    style PayDecision fill:#FFD700
+    style DetermineTemplate fill:#FFD700
+            </div>
+
+            <h3>Signal Flow Table</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Signal Type</th>
+                        <th>Source Agent</th>
+                        <th>Target Agent(s)</th>
+                        <th>Data Payload</th>
+                        <th>Dispatch Method</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>order.validated</code></td>
+                        <td>Order Processing Agent</td>
+                        <td>Inventory Agent</td>
+                        <td>Order items, quantities</td>
+                        <td>Direct (PID)</td>
+                    </tr>
+                    <tr>
+                        <td><code>inventory.reserved</code></td>
+                        <td>Inventory Agent</td>
+                        <td>Payment Agent</td>
+                        <td>Reservation ID, items</td>
+                        <td>PubSub</td>
+                    </tr>
+                    <tr>
+                        <td><code>payment.completed</code></td>
+                        <td>Payment Agent</td>
+                        <td>Fulfillment Agent, Notification Agent</td>
+                        <td>Transaction ID, amount</td>
+                        <td>PubSub (broadcast)</td>
+                    </tr>
+                    <tr>
+                        <td><code>shipment.created</code></td>
+                        <td>Fulfillment Agent</td>
+                        <td>Notification Agent</td>
+                        <td>Tracking number, carrier</td>
+                        <td>Named Process</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Process 2: Smart Home Automation -->
+        <div class="process-section">
+            <h2>2. Smart Home Automation with Sensor-Triggered Workflows</h2>
+            
+            <div class="description">
+                <p>This process demonstrates how sensor agents detect environmental changes and trigger coordinated responses from multiple home automation agents.</p>
+            </div>
+
+            <div class="mermaid">
+graph LR
+    subgraph Sensors["🌡️ Sensor Layer"]
+        Motion[Motion Sensor Agent]
+        Temp[Temperature Sensor Agent]
+        Light[Light Sensor Agent]
+        
+        Motion --> MotionSignal[Signal: motion.detected]
+        Temp --> TempSignal[Signal: temp.threshold.exceeded]
+        Light --> LightSignal[Signal: ambient.light.low]
+    end
+    
+    subgraph EventBus["📡 Signal Event Bus"]
+        MotionSignal --> Bus{Signal Router}
+        TempSignal --> Bus
+        LightSignal --> Bus
+    end
+    
+    subgraph AutomationAgent["🏠 Home Automation Agent"]
+        Bus --> ReceiveSignals[Receive Signals]
+        ReceiveSignals --> EvaluateRules{Evaluate Rules}
+        
+        EvaluateRules -->|Motion + Dark| NightMotion[Night Motion Workflow]
+        EvaluateRules -->|High Temp| Cooling[Cooling Workflow]
+        EvaluateRules -->|Schedule| Routine[Daily Routine Workflow]
+        
+        NightMotion --> LightOn[Turn Lights On Action]
+        NightMotion --> RecordEvent[Record Security Event]
+        
+        Cooling --> AdjustTemp[Adjust Thermostat Action]
+        Cooling --> OpenVents[Open Smart Vents Action]
+        
+        Routine --> DimLights[Dim Lights Action]
+        Routine --> SetNightTemp[Set Night Temperature]
+    end
+    
+    subgraph DeviceAgents["🔌 Device Control Agents"]
+        LightOn --> LightingAgent[Lighting Control Agent]
+        DimLights --> LightingAgent
+        AdjustTemp --> ClimateAgent[Climate Control Agent]
+        OpenVents --> ClimateAgent
+        SetNightTemp --> ClimateAgent
+        RecordEvent --> SecurityAgent[Security System Agent]
+        
+        LightingAgent --> ExecLight[Execute Light Commands]
+        ClimateAgent --> ExecClimate[Execute Climate Commands]
+        SecurityAgent --> ExecSecurity[Log & Alert]
+    end
+    
+    subgraph Feedback["✅ Confirmation"]
+        ExecLight --> Confirm1[Signal: action.completed]
+        ExecClimate --> Confirm2[Signal: action.completed]
+        ExecSecurity --> Confirm3[Signal: action.completed]
+        
+        Confirm1 --> End([Process Complete])
+        Confirm2 --> End
+        Confirm3 --> End
+    end
+    
+    style Motion fill:#DDA0DD
+    style Temp fill:#DDA0DD
+    style Light fill:#DDA0DD
+    style End fill:#98FB98
+    style EvaluateRules fill:#FFD700
+            </div>
+
+            <h3>Workflow Definitions</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Workflow Name</th>
+                        <th>Trigger Conditions</th>
+                        <th>Actions Chain</th>
+                        <th>Compensation</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>Night Motion</strong></td>
+                        <td>Motion detected + Time 22:00-06:00</td>
+                        <td>1. Turn on pathway lights<br>2. Check security cameras<br>3. Log event</td>
+                        <td>Auto-off after 5 minutes</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Cooling</strong></td>
+                        <td>Temperature > 25°C</td>
+                        <td>1. Set AC to 22°C<br>2. Open smart vents<br>3. Close blinds</td>
+                        <td>Restore previous settings</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Daily Routine</strong></td>
+                        <td>Schedule-based (cron)</td>
+                        <td>1. Adjust all thermostats<br>2. Set lighting scenes<br>3. Arm/disarm security</td>
+                        <td>Manual override available</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Process 3: AI Customer Support -->
+        <div class="process-section">
+            <h2>3. AI-Powered Customer Support System</h2>
+            
+            <div class="description">
+                <p>This process shows how an AI agent handles customer inquiries by coordinating with various backend agents to search knowledge bases, check order status, and create support tickets.</p>
+            </div>
+
+            <div class="mermaid">
+flowchart TB
+    Start([Customer Query]) --> AIAgent{AI Support Agent}
+    
+    AIAgent --> ParseIntent[Parse Intent with LLM]
+    ParseIntent --> RouteDecision{Determine Action}
+    
+    RouteDecision -->|FAQ| SearchKB[Search Knowledge Base]
+    RouteDecision -->|Order Issue| CheckOrder[Check Order Status]
+    RouteDecision -->|Complex Issue| CreateTicket[Create Support Ticket]
+    RouteDecision -->|Multiple| ChainActions[Chain Multiple Actions]
+    
+    subgraph KnowledgeAgent["📚 Knowledge Base Agent"]
+        SearchKB --> QueryVector[Vector Search Action]
+        QueryVector --> RankResults[Rank Results Action]
+        RankResults --> FormatAnswer[Format Answer Action]
+    end
+    
+    subgraph OrderAgent["📦 Order Management Agent"]
+        CheckOrder --> ValidateCustomer[Validate Customer Action]
+        ValidateCustomer --> FetchOrder[Fetch Order Action]
+        FetchOrder --> CheckStatus[Check Status Action]
+    end
+    
+    subgraph TicketAgent["🎫 Ticketing Agent"]
+        CreateTicket --> ClassifyIssue[Classify Issue Action]
+        ClassifyIssue --> AssignPriority[Assign Priority Action]
+        AssignPriority --> RouteTicket[Route to Team Action]
+    end
+    
+    subgraph WorkflowEngine["⚙️ Workflow Engine"]
+        ChainActions --> Action1[Action 1]
+        Action1 --> Action2[Action 2]
+        Action2 --> Action3[Action N]
+    end
+    
+    FormatAnswer --> GenerateResponse
+    CheckStatus --> GenerateResponse
+    RouteTicket --> GenerateResponse
+    Action3 --> GenerateResponse
+    
+    subgraph ResponseGen["💬 Response Generation"]
+        GenerateResponse{Generate AI Response}
+        GenerateResponse --> ValidateResponse[Validate Response]
+        ValidateResponse --> PersonalizeResponse[Personalize Response]
+        PersonalizeResponse --> SendResponse[Send to Customer]
+    end
+    
+    SendResponse --> RecordInteraction[Record Interaction]
+    RecordInteraction --> UpdateMetrics[Update Metrics]
+    UpdateMetrics --> End([Query Resolved])
+    
+    style Start fill:#90EE90
+    style End fill:#98FB98
+    style AIAgent fill:#DDA0DD
+    style RouteDecision fill:#FFD700
+    style GenerateResponse fill:#FFD700
+            </div>
+
+            <h3>AI Tool Actions Available</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Action Name</th>
+                        <th>Description</th>
+                        <th>Input Schema</th>
+                        <th>Output</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>SearchKnowledgeBase</code></td>
+                        <td>Semantic search in help articles</td>
+                        <td>{query: string, limit: integer}</td>
+                        <td>Relevant articles with scores</td>
+                    </tr>
+                    <tr>
+                        <td><code>CheckOrderStatus</code></td>
+                        <td>Retrieve order information</td>
+                        <td>{order_id: string, customer_id: string}</td>
+                        <td>Order details and current status</td>
+                    </tr>
+                    <tr>
+                        <td><code>CreateSupportTicket</code></td>
+                        <td>Create and route support ticket</td>
+                        <td>{subject: string, priority: enum, category: string}</td>
+                        <td>Ticket ID and assignment</td>
+                    </tr>
+                    <tr>
+                        <td><code>EscalateToHuman</code></td>
+                        <td>Transfer to human agent</td>
+                        <td>{reason: string, context: map}</td>
+                        <td>Transfer confirmation</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Process 4: Content Moderation -->
+        <div class="process-section">
+            <h2>4. Multi-Stage Content Moderation Pipeline</h2>
+            
+            <div class="description">
+                <p>This process illustrates a sophisticated content moderation system using multiple AI agents for different aspects of content analysis, with escalation paths for uncertain cases.</p>
+            </div>
+
+            <div class="mermaid">
+flowchart LR
+    subgraph Input["📝 Content Input"]
+        User([User Submission]) --> Content[Content + Metadata]
+    end
+    
+    subgraph Stage1["🔍 Stage 1: Quick Filter"]
+        Content --> QuickCheck{Quick Check Agent}
+        QuickCheck -->|Obvious Spam| Reject1[Auto-Reject]
+        QuickCheck -->|Clean| FastApprove[Fast Track Approve]
+        QuickCheck -->|Uncertain| Stage2Input[To Deep Analysis]
+        
+        Reject1 --> LogReject1[Log & Notify User]
+    end
+    
+    subgraph Stage2["🤖 Stage 2: AI Analysis"]
+        Stage2Input --> AIModeration[AI Moderation Agent]
+        AIModeration --> TextAnalysis[Analyze Text Action]
+        AIModeration --> ImageAnalysis[Analyze Images Action]
+        AIModeration --> ContextAnalysis[Check Context Action]
+        
+        TextAnalysis --> Scoring[Combine Scores]
+        ImageAnalysis --> Scoring
+        ContextAnalysis --> Scoring
+        
+        Scoring --> Decision{Risk Score}
+        Decision -->|High Risk| BlockContent[Block Content]
+        Decision -->|Medium Risk| HumanReview[Queue for Review]
+        Decision -->|Low Risk| ApproveContent[Approve Content]
+    end
+    
+    subgraph Stage3["👤 Stage 3: Human Review"]
+        HumanReview --> AssignReviewer[Assign to Reviewer]
+        AssignReviewer --> ReviewerDecision{Human Decision}
+        ReviewerDecision -->|Approve| ManualApprove[Manual Approval]
+        ReviewerDecision -->|Reject| ManualReject[Manual Rejection]
+        ReviewerDecision -->|Escalate| PolicyTeam[Policy Team Review]
+    end
+    
+    subgraph Stage4["📊 Stage 4: Learning"]
+        BlockContent --> RecordDecision[Record Decision]
+        ApproveContent --> RecordDecision
+        ManualApprove --> RecordDecision
+        ManualReject --> RecordDecision
+        PolicyTeam --> RecordDecision
+        
+        RecordDecision --> UpdateModel[Update Training Data]
+        UpdateModel --> ImproveRules[Improve Rules]
+        ImproveRules --> Metrics[Update Metrics]
+    end
+    
+    subgraph Output["✅ Final Actions"]
+        FastApprove --> Publish[Publish Content]
+        ApproveContent --> Publish
+        ManualApprove --> Publish
+        
+        LogReject1 --> NotifyUser[Notify User]
+        BlockContent --> NotifyUser
+        ManualReject --> NotifyUser
+        
+        Publish --> End1([Content Live])
+        NotifyUser --> End2([Content Blocked])
+    end
+    
+    style User fill:#90EE90
+    style End1 fill:#98FB98
+    style End2 fill:#FFB6C1
+    style QuickCheck fill:#FFD700
+    style Decision fill:#FFD700
+    style ReviewerDecision fill:#FFD700
+            </div>
+
+            <h3>Moderation Criteria and Thresholds</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Category</th>
+                        <th>AI Confidence Required</th>
+                        <th>Auto-Action Threshold</th>
+                        <th>Human Review Range</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Hate Speech</td>
+                        <td>&gt; 0.95</td>
+                        <td>Auto-block if confidence &gt; 0.95</td>
+                        <td>0.7 - 0.95</td>
+                    </tr>
+                    <tr>
+                        <td>Violence/Threats</td>
+                        <td>&gt; 0.90</td>
+                        <td>Auto-block if confidence &gt; 0.90</td>
+                        <td>0.6 - 0.90</td>
+                    </tr>
+                    <tr>
+                        <td>Spam/Commercial</td>
+                        <td>&gt; 0.85</td>
+                        <td>Auto-block if confidence &gt; 0.85</td>
+                        <td>0.5 - 0.85</td>
+                    </tr>
+                    <tr>
+                        <td>Misinformation</td>
+                        <td>N/A</td>
+                        <td>Always requires human review</td>
+                        <td>All flagged</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Process 5: Data Processing Pipeline -->
+        <div class="process-section">
+            <h2>5. Distributed Data Processing with MapReduce Agents</h2>
+            
+            <div class="description">
+                <p>This process shows how multiple agents coordinate to process large datasets using a MapReduce pattern, with error handling and recovery mechanisms.</p>
+            </div>
+
+            <div class="mermaid">
+flowchart TD
+    Start([Large Dataset Input]) --> Coordinator[Coordinator Agent]
+    
+    Coordinator --> Split[Split Dataset Action]
+    Split --> Chunks{Data Chunks}
+    
+    Chunks --> M1[Mapper Agent 1]
+    Chunks --> M2[Mapper Agent 2]
+    Chunks --> M3[Mapper Agent 3]
+    Chunks --> MN[Mapper Agent N]
+    
+    subgraph MapPhase["🗺️ Map Phase"]
+        M1 --> Process1[Process Chunk 1]
+        M2 --> Process2[Process Chunk 2]
+        M3 --> Process3[Process Chunk 3]
+        MN --> ProcessN[Process Chunk N]
+        
+        Process1 --> Check1{Success?}
+        Process2 --> Check2{Success?}
+        Process3 --> Check3{Success?}
+        ProcessN --> CheckN{Success?}
+        
+        Check1 -->|Yes| Result1[Intermediate Result 1]
+        Check1 -->|No| Retry1[Retry or Reassign]
+        Check2 -->|Yes| Result2[Intermediate Result 2]
+        Check3 -->|Yes| Result3[Intermediate Result 3]
+        CheckN -->|Yes| ResultN[Intermediate Result N]
+        
+        Retry1 --> Process1
+    end
+    
+    Result1 --> Shuffle[Shuffle & Sort]
+    Result2 --> Shuffle
+    Result3 --> Shuffle
+    ResultN --> Shuffle
+    
+    subgraph ReducePhase["📊 Reduce Phase"]
+        Shuffle --> R1[Reducer Agent 1]
+        Shuffle --> R2[Reducer Agent 2]
+        
+        R1 --> Aggregate1[Aggregate Results]
+        R2 --> Aggregate2[Aggregate Results]
+        
+        Aggregate1 --> Combine[Combine Final Results]
+        Aggregate2 --> Combine
+    end
+    
+    Combine --> Validate{Validate Output}
+    Validate -->|Valid| Store[Store Results]
+    Validate -->|Invalid| ErrorHandler[Error Recovery]
+    
+    Store --> Notify[Send Completion Signal]
+    ErrorHandler --> Compensate[Compensate & Rollback]
+    
+    Notify --> End1([Success])
+    Compensate --> End2([Failed - Rolled Back])
+    
+    style Start fill:#90EE90
+    style End1 fill:#98FB98
+    style End2 fill:#FFB6C1
+    style Check1 fill:#FFD700
+    style Validate fill:#FFD700
+            </div>
+
+            <div class="note">
+                <strong>Note:</strong> Each mapper and reducer agent maintains its own state and can be supervised independently. Failed agents are automatically restarted by the OTP supervisor with their work reassigned.
+            </div>
+        </div>
+
+        <!-- Inter-Agent Communication Patterns -->
+        <div class="process-section">
+            <h2>6. Inter-Agent Communication Patterns</h2>
+            
+            <div class="description">
+                <p>This section illustrates the different communication patterns used between Jido agents.</p>
+            </div>
+
+            <h3>6.1 Request-Response Pattern</h3>
+            <div class="mermaid">
+sequenceDiagram
+    participant Client
+    participant Agent1 as Requesting Agent
+    participant Dispatch as Signal Dispatch
+    participant Agent2 as Responding Agent
+    
+    Client->>Agent1: Command
+    Agent1->>Agent1: Process
+    Agent1->>Dispatch: Create Request Signal
+    Dispatch->>Agent2: Route Signal (PID/Named)
+    Agent2->>Agent2: Execute Action
+    Agent2->>Dispatch: Create Response Signal
+    Dispatch->>Agent1: Route Response
+    Agent1->>Client: Return Result
+            </div>
+
+            <h3>6.2 Publish-Subscribe Pattern</h3>
+            <div class="mermaid">
+sequenceDiagram
+    participant Publisher as Publishing Agent
+    participant PubSub as Phoenix PubSub
+    participant Sub1 as Subscriber 1
+    participant Sub2 as Subscriber 2
+    participant Sub3 as Subscriber 3
+    
+    Note over Sub1,Sub3: Agents subscribe to topic "events.order.*"
+    
+    Publisher->>PubSub: Signal: "events.order.created"
+    PubSub-->>Sub1: Broadcast Signal
+    PubSub-->>Sub2: Broadcast Signal
+    PubSub-->>Sub3: Broadcast Signal
+    
+    Sub1->>Sub1: Handle Signal
+    Sub2->>Sub2: Handle Signal
+    Sub3->>Sub3: Handle Signal
+            </div>
+
+            <h3>6.3 Workflow Chain Pattern</h3>
+            <div class="mermaid">
+sequenceDiagram
+    participant Init as Initiator
+    participant WF as Workflow Engine
+    participant A1 as Action 1
+    participant A2 as Action 2
+    participant A3 as Action 3
+    
+    Init->>WF: Start Workflow
+    WF->>A1: Execute with params
+    A1-->>WF: Result 1
+    WF->>A2: Execute with Result 1
+    A2-->>WF: Result 2
+    WF->>A3: Execute with Result 2
+    A3-->>WF: Final Result
+    WF-->>Init: Workflow Complete
+    
+    Note over WF: If any action fails, compensation logic triggers
+            </div>
+
+            <h3>6.4 Event Sourcing Pattern</h3>
+            <div class="mermaid">
+flowchart LR
+    subgraph Commands["Commands"]
+        Cmd1[Add Item]
+        Cmd2[Remove Item]
+        Cmd3[Update Quantity]
+    end
+    
+    subgraph Agent["Shopping Cart Agent"]
+        State[Current State]
+        Handler[Command Handler]
+    end
+    
+    subgraph Events["Event Stream"]
+        E1[item.added]
+        E2[item.removed]
+        E3[quantity.updated]
+    end
+    
+    subgraph Projections["Read Models"]
+        Cart[Cart View]
+        History[Order History]
+        Analytics[Analytics View]
+    end
+    
+    Cmd1 --> Handler
+    Cmd2 --> Handler
+    Cmd3 --> Handler
+    
+    Handler --> E1
+    Handler --> E2
+    Handler --> E3
+    
+    E1 --> State
+    E2 --> State
+    E3 --> State
+    
+    E1 --> Cart
+    E2 --> Cart
+    E3 --> Cart
+    
+    E1 --> History
+    E2 --> History
+    E3 --> History
+    
+    E1 --> Analytics
+    E2 --> Analytics
+    E3 --> Analytics
+            </div>
+        </div>
+
+        <!-- Error Handling and Compensation -->
+        <div class="process-section">
+            <h2>7. Error Handling and Compensation Flows</h2>
+            
+            <div class="description">
+                <p>This diagram shows how Jido handles errors and performs compensation when workflows fail.</p>
+            </div>
+
+            <div class="mermaid">
+flowchart TB
+    Start([Start Transaction]) --> Action1[Action 1: Reserve Inventory]
+    Action1 --> Check1{Success?}
+    Check1 -->|Yes| Action2[Action 2: Charge Payment]
+    Check1 -->|No| Fail1[Log Error]
+    
+    Action2 --> Check2{Success?}
+    Check2 -->|Yes| Action3[Action 3: Create Shipment]
+    Check2 -->|No| Comp2[Compensate: Release Inventory]
+    
+    Action3 --> Check3{Success?}
+    Check3 -->|Yes| Success([Transaction Complete])
+    Check3 -->|No| Comp3[Start Compensation]
+    
+    Comp3 --> CompA3[Cancel Shipment]
+    CompA3 --> CompA2[Refund Payment]
+    CompA2 --> CompA1[Release Inventory]
+    CompA1 --> Rollback([Transaction Rolled Back])
+    
+    Comp2 --> CompA1
+    Fail1 --> Failed([Transaction Failed])
+    
+    style Start fill:#90EE90
+    style Success fill:#98FB98
+    style Rollback fill:#FFB6C1
+    style Failed fill:#FFB6C1
+    style Check1 fill:#FFD700
+    style Check2 fill:#FFD700
+    style Check3 fill:#FFD700
+    style Comp3 fill:#FFA07A
+    style CompA3 fill:#FFA07A
+    style CompA2 fill:#FFA07A
+    style CompA1 fill:#FFA07A
+            </div>
+        </div>
+
+        <!-- Performance Considerations -->
+        <div class="process-section">
+            <h2>8. Performance and Scalability Patterns</h2>
+            
+            <h3>Agent Pool Management</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Pattern</th>
+                        <th>Use Case</th>
+                        <th>Configuration</th>
+                        <th>Benefits</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>Fixed Pool</strong></td>
+                        <td>Predictable workload</td>
+                        <td>10-50 agents per node</td>
+                        <td>Consistent resource usage</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Dynamic Pool</strong></td>
+                        <td>Variable workload</td>
+                        <td>Min: 5, Max: 100 agents</td>
+                        <td>Scales with demand</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Distributed Pool</strong></td>
+                        <td>Multi-node deployment</td>
+                        <td>N agents × M nodes</td>
+                        <td>Fault tolerance, geographic distribution</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Specialized Pools</strong></td>
+                        <td>Different agent types</td>
+                        <td>Pool per agent type</td>
+                        <td>Optimized resource allocation</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>Signal Batching Strategy</h3>
+            <div class="mermaid">
+flowchart LR
+    subgraph Incoming["Incoming Signals"]
+        S1[Signal 1]
+        S2[Signal 2]
+        S3[Signal 3]
+        SN[Signal N]
+    end
+    
+    subgraph Batcher["Batch Processor"]
+        Queue[Signal Queue]
+        Timer[5 sec timer]
+        Counter[Count: 100]
+    end
+    
+    S1 --> Queue
+    S2 --> Queue
+    S3 --> Queue
+    SN --> Queue
+    
+    Queue --> Decision{Batch Ready?}
+    Timer --> Decision
+    Counter --> Decision
+    
+    Decision -->|Timer expired OR Count reached| Process[Process Batch]
+    Decision -->|Wait| Queue
+    
+    Process --> Dispatch[Batch Dispatch]
+    Dispatch --> Agents[Target Agents]
+            </div>
+        </div>
+
+        <!-- Summary -->
+        <div class="process-section" style="background: #e7f3ff;">
+            <h2>📋 Summary and Best Practices</h2>
+            
+            <h3>Key Design Principles</h3>
+            <ul>
+                <li><strong>Separation of Concerns:</strong> Each agent has a single, well-defined responsibility</li>
+                <li><strong>Loose Coupling:</strong> Agents communicate through signals, not direct dependencies</li>
+                <li><strong>Fault Tolerance:</strong> Individual agent failures don't cascade through the system</li>
+                <li><strong>Scalability:</strong> Agents can be distributed across multiple nodes</li>
+                <li><strong>Observability:</strong> All agent interactions produce traceable signals</li>
+            </ul>
+
+            <h3>Communication Best Practices</h3>
+            <ol>
+                <li><strong>Use PubSub for broadcast events</strong> that multiple agents need to receive</li>
+                <li><strong>Use direct PID/Named messaging</strong> for request-response patterns</li>
+                <li><strong>Implement timeouts</strong> for all inter-agent communications</li>
+                <li><strong>Design for eventual consistency</strong> when agents are distributed</li>
+                <li><strong>Include correlation IDs</strong> in signals for tracing</li>
+                <li><strong>Version your signal schemas</strong> for backward compatibility</li>
+            </ol>
+
+            <h3>Workflow Design Guidelines</h3>
+            <ul>
+                <li>Keep individual actions small and focused</li>
+                <li>Design compensation logic upfront for critical workflows</li>
+                <li>Use saga patterns for long-running transactions</li>
+                <li>Implement circuit breakers for external service calls</li>
+                <li>Monitor workflow completion rates and latencies</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        mermaid.initialize({ 
+            startOnLoad: true,
+            theme: 'default',
+            themeVariables: {
+                primaryColor: '#667eea',
+                primaryTextColor: '#fff',
+                primaryBorderColor: '#764ba2',
+                lineColor: '#5a67d8',
+                secondaryColor: '#f7fafc',
+                tertiaryColor: '#e2e8f0',
+                background: '#ffffff',
+                mainBkg: '#667eea',
+                secondBkg: '#f7fafc',
+                tertiaryBkg: '#e2e8f0'
+            }
+        });
+    </script>
+</body>
+</html>
