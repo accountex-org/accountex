@@ -1,3 +1,24 @@
+# Complete Jido.BPMN Modules for Accounts Receivables System
+
+## Overview
+
+This document contains comprehensive BPMN process modules for the Accounts Receivables application, built using the Jido.BPMN DSL with agent-based architecture and event sourcing through AshCommanded.
+
+## Table of Contents
+
+1. [Process Base Module](#process-base-module)
+2. [Invoice Lifecycle Process](#invoice-lifecycle-process)
+3. [Collections Workflow Process](#collections-workflow-process)
+4. [Credit Management Process](#credit-management-process)
+5. [Payment Processing Workflow](#payment-processing-workflow)
+6. [Dispute Resolution Process](#dispute-resolution-process)
+7. [Month-End Close Process](#month-end-close-process)
+
+## Process Base Module
+
+The base module provides common functionality for all BPMN processes:
+
+```elixir
 defmodule AccountsReceivables.BPMN.ProcessBase do
   @moduledoc """
   Base module providing common BPMN process functionality with Jido.Agent integration
@@ -40,7 +61,13 @@ defmodule AccountsReceivables.BPMN.ProcessBase do
     })
   end
 end
+```
 
+## Invoice Lifecycle Process
+
+Manages the complete invoice lifecycle from creation to payment or write-off:
+
+```elixir
 defmodule AccountsReceivables.BPMN.InvoiceLifecycle do
   use AccountsReceivables.BPMN.ProcessBase,
     name: "invoice_lifecycle",
@@ -363,7 +390,13 @@ defmodule AccountsReceivables.BPMN.InvoiceLifecycle do
     end
   end
 end
+```
 
+## Collections Workflow Process
+
+Multi-stage collections process with AI-enhanced strategies and escalation:
+
+```elixir
 defmodule AccountsReceivables.BPMN.CollectionsWorkflow do
   use AccountsReceivables.BPMN.ProcessBase,
     name: "collections_workflow",
@@ -696,7 +729,13 @@ defmodule AccountsReceivables.BPMN.CollectionsWorkflow do
     end
   end
 end
+```
 
+## Credit Management Process
+
+Customer credit assessment and management with AI-powered decision making:
+
+```elixir
 defmodule AccountsReceivables.BPMN.CreditManagement do
   use AccountsReceivables.BPMN.ProcessBase,
     name: "credit_management",
@@ -935,7 +974,13 @@ defmodule AccountsReceivables.BPMN.CreditManagement do
     end_event :credit_process_complete
   end
 end
+```
 
+## Payment Processing Workflow
+
+AI-powered payment receipt, validation, and application process:
+
+```elixir
 defmodule AccountsReceivables.BPMN.PaymentProcessing do
   use AccountsReceivables.BPMN.ProcessBase,
     name: "payment_processing",
@@ -1306,7 +1351,13 @@ defmodule AccountsReceivables.BPMN.PaymentProcessing do
     end
   end
 end
+```
 
+## Dispute Resolution Process
+
+Invoice dispute handling and resolution with investigation workflows:
+
+```elixir
 defmodule AccountsReceivables.BPMN.DisputeResolution do
   use AccountsReceivables.BPMN.ProcessBase,
     name: "dispute_resolution",
@@ -1774,7 +1825,13 @@ defmodule AccountsReceivables.BPMN.DisputeResolution do
     end_event :dispute_resolved
   end
 end
+```
 
+## Month-End Close Process
+
+Comprehensive month-end closing process with parallel task execution:
+
+```elixir
 defmodule AccountsReceivables.BPMN.MonthEndClose do
   use AccountsReceivables.BPMN.ProcessBase,
     name: "month_end_close",
@@ -2134,3 +2191,47 @@ defmodule AccountsReceivables.BPMN.MonthEndClose do
     end
   end
 end
+```
+
+## Key Features and Architecture
+
+### Event Sourcing Integration
+- All processes emit domain events through AshCommanded
+- Complete audit trails maintained
+- Event replay capability for recovery
+
+### Agent-Based Architecture
+- Business logic encapsulated in Jido agents
+- Both AI-enabled and traditional agents
+- Flexible and scalable design
+
+### Resilient Communication
+- Signal-based communication using CloudEvents standard
+- Multi-channel dispatch (PubSub, Bus, direct PID)
+- Graceful degradation when applications unavailable
+
+### Process Orchestration
+- Complex workflows with parallel processing
+- Sub-processes and multi-instance tasks
+- Event-based gateways for asynchronous flows
+- DMN-compliant business rule tasks
+- User tasks with forms and escalations
+- Timer events for scheduled actions
+- Boundary events for error handling
+- Compensation activities for rollback scenarios
+
+### AI Enhancement
+- Strategic AI agent usage for:
+  - Credit scoring and risk assessment
+  - Payment matching and allocation
+  - Collection strategy optimization
+  - Dispute resolution recommendations
+  - Bad debt provisioning (ECL models)
+
+### Error Handling
+- Built-in compensation handlers
+- Boundary events for error catching
+- Retry policies with exponential backoff
+- Manual fallback processes
+
+This implementation provides a production-ready, comprehensive BPMN process suite for your Accounts Receivables system that integrates seamlessly with your Elixir-based accounting/ERP architecture.
