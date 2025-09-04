@@ -1,2132 +1,2136 @@
-# Complete BPMN DSL Modules for Accounts Receivables Application
-
-## Overview
-
-This document provides production-ready BPMN DSL modules for the Accounts Receivables (AR) application within the AccountEx modular ERP system. The implementation integrates:
-- **Commanded** for event sourcing
-- **Ash** for persistence
-- **Jido** for agentic workflows
-- **Spark DSL** for BPMN process definitions
-
-## Core BPMN DSL Framework Setup
-
-```elixir
-defmodule AccountEx.AccountsReceivables.BPMN.DSL do
+defmodule AccountsReceivables.BPMN.ProcessBase do
   @moduledoc """
-  BPMN DSL for Accounts Receivables with full integration of Commanded, Ash, and Jido.
-  Handles module unavailability gracefully with fallback strategies.
+  Base module providing common BPMN process functionality with Jido.Agent integration
   """
   
-  use Spark.Dsl.Extension,
-    sections: [
-      process_section(),
-      agents_section(),
-      commands_section(),
-      signals_section(),
-      resilience_section()
-    ],
-    transformers: [
-      AccountEx.BPMN.Transformers.ValidateStructure,
-      AccountEx.BPMN.Transformers.GenerateCommandHandlers,
-      AccountEx.BPMN.Transformers.GenerateJidoAgents,
-      AccountEx.BPMN.Transformers.GenerateAshResources,
-      AccountEx.BPMN.Transformers.WireSignalRouting
-    ],
-    verifiers: [
-      AccountEx.BPMN.Verifiers.ValidateEventSourcing,
-      AccountEx.BPMN.Verifiers.CheckModuleDependencies,
-      AccountEx.BPMN.Verifiers.ValidateCompensation
-    ]
-
-  defp process_section do
-    %Spark.Dsl.Section{
-      name: :process,
-      describe: "Define BPMN process with Commanded integration",
-      schema: [
-        id: [type: :atom, required: true],
-        tenant_aware: [type: :boolean, default: true],
-        commanded_app: [type: :atom, default: AccountEx.CommandedApp],
-        resilient: [type: :boolean, default: true]
-      ],
-      entities: [
-        start_event_entity(),
-        end_event_entity(),
-        agent_task_entity(),
-        service_task_entity(),
-        user_task_entity(),
-        gateway_entity(),
-        subprocess_entity(),
-        boundary_event_entity()
-      ]
-    }
+  defmacro __using__(opts) do
+    quote do
+      use Jido.Process
+      
+      import Jido.Signal
+      import AccountsReceivables.BPMN.ProcessBase
+      
+      @process_name unquote(opts[:name])
+      @process_version unquote(opts[:version] || "1.0.0")
+      
+      def metadata do
+        %{
+          name: @process_name,
+          version: @process_version,
+          created_at: DateTime.utc_now()
+        }
+      end
+    end
   end
-
-  defp agents_section do
-    %Spark.Dsl.Section{
-      name: :agents,
-      describe: "Define Jido agents for automated tasks",
-      entities: [
-        jido_agent_entity()
-      ]
-    }
+  
+  def handle_unavailable_application(app_name, fallback_action) do
+    case Application.ensure_started(app_name) do
+      :ok -> :continue
+      {:error, _} -> fallback_action.()
+    end
   end
-
-  defp commands_section do
-    %Spark.Dsl.Section{
-      name: :commands,
-      describe: "Commanded event sourcing integration",
-      schema: [
-        application: [type: :atom, default: AccountEx.CommandedApp],
-        consistency: [type: {:in, [:strong, :eventual]}, default: :eventual]
-      ]
-    }
-  end
-
-  defp resilience_section do
-    %Spark.Dsl.Section{
-      name: :resilience,
-      describe: "Module unavailability handling",
-      schema: [
-        fallback_strategy: [type: {:in, [:cache, :queue, :skip, :fail]}, default: :cache],
-        cache_ttl: [type: :pos_integer, default: 3600],
-        retry_policy: [type: :keyword_list]
-      ]
-    }
+  
+  def emit_domain_event(event, metadata) do
+    AshCommanded.Router.dispatch(%{
+      event: event,
+      metadata: Map.merge(metadata, %{
+        process_id: self(),
+        timestamp: DateTime.utc_now()
+      })
+    })
   end
 end
-```
 
-## 1. Invoice Lifecycle Management Process
-
-```elixir
-defmodule AccountEx.AR.Processes.InvoiceLifecycle do
-  @moduledoc """
-  Complete invoice lifecycle from creation through payment with credit validation,
-  approval workflows, and payment monitoring.
-  """
+defmodule AccountsReceivables.BPMN.InvoiceLifecycle do
+  use AccountsReceivables.BPMN.ProcessBase,
+    name: "invoice_lifecycle",
+    version: "1.0.0"
   
-  use AccountEx.AccountsReceivables.BPMN.DSL
+  use Jido.BPMN
   
-  process id: :invoice_lifecycle do
-    tenant_aware true
-    resilient true
+  process "invoice_lifecycle" do
+    @doc """
+    Complete invoice lifecycle from creation to payment/write-off
+    """
     
-    # ============================================
-    # Process Initiation
-    # ============================================
-    
+    # Start event - triggered by sales order completion
     start_event :invoice_requested do
-      trigger :signal
-      signal_type "accountex.sales.order_fulfilled"
-      correlation [:order_id, :customer_id, :tenant_id]
+      message_ref "sales.order.completed"
       
-      data_mapping %{
-        customer_id: "$.order.customer_id",
-        line_items: "$.order.line_items",
-        total_amount: "$.order.total_amount",
-        payment_terms: "$.order.payment_terms"
-      }
+      output :order_data
     end
     
-    # ============================================
-    # Credit Validation
-    # ============================================
-    
-    agent_task :validate_credit do
-      agent AccountEx.AR.Agents.CreditManager
-      action :check_credit_standing
-      
-      input %{
-        customer_id: "$.customer_id",
-        requested_amount: "$.total_amount",
-        current_exposure: "$.customer.current_ar_balance"
-      }
-      
-      timeout "PT2M"  # 2 minute timeout
-      
-      fallback_on_unavailable :use_cached_credit_data
-      cache_key "credit_#{$.customer_id}"
-      
-      boundary_event :credit_check_timeout do
-        type :timer
-        duration "PT2M"
-        interrupting true
-        flows_to :manual_credit_review
-      end
-    end
-    
-    exclusive_gateway :credit_decision do
-      default :credit_review_required
-      
-      condition :approved, expr: "$.credit_result.status == 'approved'"
-      condition :rejected, expr: "$.credit_result.status == 'rejected'"
-      condition :review_required, expr: "$.credit_result.status == 'review'"
-    end
-    
-    user_task :manual_credit_review do
-      incoming [:review_required, :credit_check_timeout]
-      
-      assignee role: "credit_manager"
-      escalation after: "PT4H", to: "finance_director"
-      
-      form :credit_review_form do
-        field :customer_history, type: :readonly
-        field :requested_amount, type: :readonly
-        field :decision, type: :select, options: ["approve", "reject", "approve_with_conditions"]
-        field :notes, type: :text
-        field :credit_limit_override, type: :decimal
-      end
-      
-      sla "PT24H"
-    end
-    
-    # ============================================
-    # Invoice Creation (Commanded Aggregate)
-    # ============================================
-    
+    # Service task - Create invoice with agent
     service_task :create_invoice do
-      incoming [:approved, :manual_credit_review]
+      name "Create Invoice"
+      input [:order_data]
       
-      command AccountEx.AR.Commands.CreateInvoice do
-        aggregate_id generate_uuid()
-        tenant_id "$.tenant_id"
+      agent AccountsReceivables.Agents.InvoiceAgent do
+        action :create_invoice
+        timeout "PT30S"
         
-        payload %{
-          invoice_number: generate_invoice_number(),
-          customer_id: "$.customer_id",
-          line_items: "$.line_items",
-          payment_terms: "$.payment_terms",
-          due_date: calculate_due_date("$.payment_terms"),
-          created_by: "$.process.initiated_by"
+        on_error :invoice_creation_failed
+      end
+      
+      output :invoice
+    end
+    
+    # Business rule task - Credit check
+    business_rule_task :check_credit do
+      name "Check Customer Credit"
+      input [:invoice]
+      
+      agent AccountsReceivables.Agents.CreditAgent do
+        action :evaluate_credit_worthiness
+        params %{
+          customer_id: "{{invoice.customer_id}}",
+          invoice_amount: "{{invoice.amount}}",
+          current_outstanding: "{{invoice.customer_outstanding}}"
         }
       end
       
-      on_success :store_invoice_id
-      on_failure :handle_creation_failure
-      
-      compensation :void_invoice
+      output :credit_decision
     end
     
-    # ============================================
-    # Approval Workflow (High-Value Invoices)
-    # ============================================
-    
-    exclusive_gateway :approval_required do
-      condition :needs_approval, expr: "$.invoice.total_amount > 10000"
-      condition :auto_approved, expr: "$.invoice.total_amount <= 10000"
+    # Exclusive gateway - Credit decision
+    exclusive_gateway :credit_gateway do
+      name "Credit Approved?"
+      
+      flow :approved do
+        condition "{{credit_decision.approved}} == true"
+        target :send_invoice
+      end
+      
+      flow :rejected do
+        condition "{{credit_decision.approved}} == false"
+        target :credit_hold_process
+      end
+      
+      default :manual_review
     end
     
-    subprocess :approval_workflow do
-      incoming :needs_approval
-      transaction_boundary true
+    # Sub-process for credit hold
+    sub_process :credit_hold_process do
+      name "Credit Hold Management"
       
-      parallel_gateway :approval_split
+      start_event :credit_hold_start
       
-      user_task :department_approval do
-        assignee expr: "get_department_head($.invoice.department)"
-        deadline "PT24H"
+      user_task :review_credit_hold do
+        name "Manual Credit Review"
+        assignee "credit_manager"
         
-        form :approval_form do
-          field :invoice_details, type: :readonly
-          field :approval_decision, type: :boolean
-          field :comments, type: :text
+        form do
+          field :approval_decision, :boolean
+          field :override_reason, :string
+          field :new_credit_limit, :decimal
+        end
+        
+        output :credit_override
+      end
+      
+      exclusive_gateway :override_decision do
+        flow :approved do
+          condition "{{credit_override.approval_decision}} == true"
+          target :update_credit_limit
+        end
+        
+        flow :rejected do
+          target :cancel_invoice
         end
       end
       
-      user_task :finance_approval do
-        assignee role: "finance_manager"
-        deadline "PT24H"
+      service_task :update_credit_limit do
+        agent AccountsReceivables.Agents.CustomerAgent do
+          action :update_credit_limit
+          params %{
+            customer_id: "{{invoice.customer_id}}",
+            new_limit: "{{credit_override.new_credit_limit}}"
+          }
+        end
         
-        form :finance_approval_form do
-          field :invoice_details, type: :readonly
-          field :gl_coding, type: :select_multiple
-          field :approval_decision, type: :boolean
+        output :credit_updated
+      end
+      
+      end_event :credit_hold_resolved
+    end
+    
+    # Send invoice task
+    service_task :send_invoice do
+      name "Send Invoice to Customer"
+      input [:invoice]
+      
+      agent AccountsReceivables.Agents.InvoiceDeliveryAgent do
+        action :deliver_invoice
+        
+        retry_policy do
+          max_attempts 3
+          backoff :exponential
+          initial_delay "PT1M"
         end
       end
       
-      parallel_gateway :approval_join do
-        synchronize [:department_approval, :finance_approval]
+      output :delivery_confirmation
+    end
+    
+    # Timer intermediate event - Payment due date
+    timer_intermediate_event :payment_due_timer do
+      name "Payment Due Date"
+      
+      time_date "{{invoice.due_date}}"
+      
+      on_timeout :check_payment_status
+    end
+    
+    # Service task - Check payment status
+    service_task :check_payment_status do
+      name "Check Payment Status"
+      
+      agent AccountsReceivables.Agents.PaymentAgent do
+        action :get_payment_status
+        params %{invoice_id: "{{invoice.id}}"}
       end
       
-      exclusive_gateway :approval_outcome do
-        condition :both_approved, expr: "all_approved($.approvals)"
-        condition :rejected, expr: "any_rejected($.approvals)"
+      output :payment_status
+    end
+    
+    # Event-based gateway for payment handling
+    event_based_gateway :payment_gateway do
+      name "Payment Processing"
+      
+      # Payment received path
+      intermediate_catch_event :payment_received do
+        message_ref "payment.received"
+        correlation_key "{{invoice.id}}"
+        
+        flow_to :apply_payment
       end
       
-      end_event :approval_complete, incoming: :both_approved
+      # Timeout path - no payment received
+      timer_intermediate_event :payment_timeout do
+        time_duration "P7D"  # 7 days grace period
+        
+        flow_to :initiate_collections
+      end
       
-      error_event :approval_rejected do
-        incoming :rejected
-        throw_error "APPROVAL_REJECTED"
-        compensation_trigger true
+      # Dispute raised path
+      intermediate_catch_event :dispute_raised do
+        message_ref "invoice.disputed"
+        correlation_key "{{invoice.id}}"
+        
+        flow_to :dispute_resolution
       end
     end
     
-    # ============================================
-    # Issue and Send Invoice
-    # ============================================
-    
-    service_task :issue_invoice do
-      incoming [:auto_approved, :approval_complete]
+    # Apply payment
+    service_task :apply_payment do
+      name "Apply Payment to Invoice"
       
-      command AccountEx.AR.Commands.IssueInvoice do
-        aggregate_id "$.invoice_id"
+      agent AccountsReceivables.Agents.PaymentAgent do
+        action :apply_payment
+        params %{
+          invoice_id: "{{invoice.id}}",
+          payment_data: "{{payment_received.data}}"
+        }
         
-        payload %{
-          issued_at: now(),
-          issued_by: "$.process.current_user"
+        compensate :reverse_payment_application
+      end
+      
+      output :payment_result
+    end
+    
+    # Collections sub-process
+    call_activity :initiate_collections do
+      name "Collections Process"
+      called_element :collections_workflow
+      
+      input_mapping do
+        map :invoice_id, "{{invoice.id}}"
+        map :customer_id, "{{invoice.customer_id}}"
+        map :amount_due, "{{invoice.outstanding_amount}}"
+      end
+      
+      output :collection_result
+    end
+    
+    # Dispute resolution sub-process
+    call_activity :dispute_resolution do
+      name "Dispute Resolution"
+      called_element :dispute_workflow
+      
+      input_mapping do
+        map :invoice_id, "{{invoice.id}}"
+        map :dispute_data, "{{dispute_raised.data}}"
+      end
+      
+      output :resolution_result
+    end
+    
+    # Parallel gateway for final processing
+    parallel_gateway :final_processing do
+      name "Final Invoice Processing"
+      
+      flow :update_ledger
+      flow :send_notification
+      flow :update_metrics
+    end
+    
+    # Update general ledger
+    service_task :update_ledger do
+      name "Update General Ledger"
+      
+      handle_unavailable_application :general_ledger do
+        agent AccountsReceivables.Agents.FallbackLedgerAgent do
+          action :queue_ledger_update
+        end
+      end
+      
+      agent GeneralLedger.Agents.PostingAgent do
+        action :post_ar_transaction
+        params %{
+          invoice: "{{invoice}}",
+          payment: "{{payment_result}}"
         }
       end
-      
-      publish_event "InvoiceIssued"
     end
     
-    agent_task :send_invoice do
-      agent AccountEx.AR.Agents.InvoiceDelivery
-      action :deliver_to_customer
+    # Send notification
+    send_task :send_notification do
+      name "Send Confirmation"
       
-      input %{
-        invoice_id: "$.invoice_id",
-        customer_id: "$.customer_id",
-        delivery_preferences: "$.customer.delivery_preferences"
-      }
-      
-      retry_policy %{
-        max_attempts: 3,
-        backoff: :exponential,
-        initial_delay: 60_000  # 1 minute
-      }
-      
-      channels [:email, :portal, :edi]
-      
-      track_delivery true
-      require_acknowledgment "$.customer.requires_acknowledgment"
-    end
-    
-    # ============================================
-    # Payment Monitoring Subprocess
-    # ============================================
-    
-    subprocess :payment_monitoring do
-      start_event :begin_monitoring
-      
-      # Payment deadline timer
-      timer_event :payment_due do
-        date expr: "$.invoice.due_date"
-        non_interrupting false
-      end
-      
-      # Listen for payment signals
-      receive_task :await_payment do
-        signal_subscription [
-          {type: "accountex.ar.payment_received", correlation: [:invoice_id]},
-          {type: "accountex.ar.payment_promised", correlation: [:invoice_id]}
-        ]
-        
-        timeout "$.invoice.payment_terms.net_days + 30"
-      end
-      
-      exclusive_gateway :payment_status do
-        condition :paid_full, expr: "$.payment.amount >= $.invoice.total_amount"
-        condition :paid_partial, expr: "$.payment.amount > 0"
-        condition :overdue, expr: "$.payment_due.triggered && $.payment.amount == 0"
-      end
-      
-      service_task :apply_payment do
-        incoming [:paid_full, :paid_partial]
-        
-        command AccountEx.AR.Commands.ApplyPayment do
-          aggregate_id "$.invoice_id"
-          
-          payload %{
-            payment_id: "$.payment.id",
-            amount: "$.payment.amount",
-            payment_date: "$.payment.date"
-          }
-        end
-      end
-      
-      conditional_event :check_balance do
-        incoming :paid_partial
-        condition expr: "$.invoice.outstanding_balance > 0"
-        flows_to :await_payment  # Loop back for more payments
-      end
-      
-      signal_event :escalate_overdue do
-        incoming :overdue
-        
-        signal AccountEx.Signals.InvoiceOverdue do
-          type "accountex.ar.invoice_overdue"
-          source "/ar/invoices"
-          
-          data %{
-            invoice_id: "$.invoice_id",
-            customer_id: "$.customer_id",
-            days_overdue: calculate_days_overdue("$.invoice.due_date"),
-            amount_outstanding: "$.invoice.outstanding_balance"
-          }
-        end
-        
-        flows_to :collections_process
-      end
-      
-      end_event :payment_complete do
-        incoming :paid_full
-      end
-    end
-    
-    # ============================================
-    # Collections Escalation
-    # ============================================
-    
-    call_activity :collections_process do
-      incoming :escalate_overdue
-      
-      called_process AccountEx.AR.Processes.Collections
-      
-      input_mapping %{
-        invoice_id: "$.invoice_id",
-        customer_id: "$.customer_id",
-        invoice_amount: "$.invoice.total_amount",
-        days_overdue: "$.days_overdue"
-      }
-      
-      propagate_tenant_id true
-    end
-    
-    # ============================================
-    # Process Completion
-    # ============================================
-    
-    end_event :invoice_completed do
-      incoming [:payment_complete, :credit_rejected]
-      
-      signal AccountEx.Signals.InvoiceLifecycleComplete do
-        type "accountex.ar.invoice_lifecycle_complete"
-        
+      signal do
+        type "invoice.completed"
+        source "/accounts_receivables/invoice_lifecycle"
         data %{
-          invoice_id: "$.invoice_id",
-          status: "$.final_status",
-          completion_date: now()
+          invoice_id: "{{invoice.id}}",
+          status: "{{payment_result.status}}"
         }
-      end
-    end
-    
-    # ============================================
-    # Error Handling & Compensation
-    # ============================================
-    
-    boundary_event :global_error_handler do
-      attached_to :process
-      error_types [:system_error, :business_error, :timeout_error]
-      
-      error_handler do
-        log_error()
         
-        case error_type() do
-          :system_error -> retry_with_backoff()
-          :business_error -> escalate_to_user()
-          :timeout_error -> trigger_compensation()
+        dispatch do
+          pubsub topic: "ar_events"
+          bus target: :notification_service
+          pid target: "{{invoice.sales_agent_pid}}"
         end
       end
     end
     
-    compensation_handler :void_invoice do
-      command AccountEx.AR.Commands.VoidInvoice do
-        aggregate_id "$.invoice_id"
-        reason "$.compensation_reason"
+    # Update metrics
+    service_task :update_metrics do
+      name "Update AR Metrics"
+      
+      agent AccountsReceivables.Agents.MetricsAgent do
+        action :update_dso
+        action :update_collection_effectiveness
       end
-      
-      notify_customer true
-      reverse_gl_entries true
-    end
-  end
-  
-  # ============================================
-  # Agent Definitions
-  # ============================================
-  
-  agents do
-    jido_agent AccountEx.AR.Agents.CreditManager do
-      name "credit_manager"
-      
-      state_schema [
-        credit_checks_today: [type: :integer, default: 0],
-        cache: [type: :map, default: %{}]
-      ]
-      
-      actions [
-        AccountEx.AR.Actions.CheckCreditLimit,
-        AccountEx.AR.Actions.CalculateExposure,
-        AccountEx.AR.Actions.AssessRisk
-      ]
-      
-      skills [
-        AccountEx.AR.Skills.CreditAnalysis,
-        AccountEx.AR.Skills.RiskAssessment
-      ]
-      
-      resilient_to [:external_credit_service_down]
     end
     
-    jido_agent AccountEx.AR.Agents.InvoiceDelivery do
-      name "invoice_delivery"
-      
-      actions [
-        AccountEx.AR.Actions.GeneratePDF,
-        AccountEx.AR.Actions.SendEmail,
-        AccountEx.AR.Actions.PostToPortal,
-        AccountEx.AR.Actions.SendEDI
-      ]
-      
-      delivery_channels %{
-        email: {AccountEx.Mailer, priority: 1},
-        portal: {AccountEx.Portal, priority: 2},
-        edi: {AccountEx.EDI, priority: 3}
-      }
+    # End events
+    end_event :invoice_paid do
+      name "Invoice Paid"
+      condition "{{payment_result.status}} == :paid"
     end
-  end
-  
-  # ============================================
-  # Resilience Configuration
-  # ============================================
-  
-  resilience do
-    fallback_strategy :cache
-    cache_ttl 3600  # 1 hour
     
-    retry_policy [
-      max_attempts: 3,
-      backoff: :exponential,
-      initial_delay: 1000,
-      max_delay: 30000
-    ]
+    end_event :invoice_written_off do
+      name "Invoice Written Off"
+      condition "{{collection_result.status}} == :write_off"
+    end
     
-    circuit_breaker [
-      threshold: 5,
-      timeout: 60000,
-      half_open_requests: 3
-    ]
+    # Error handling
+    boundary_event :invoice_creation_failed do
+      attached_to :create_invoice
+      error_ref "InvoiceCreationError"
+      
+      flow_to :manual_invoice_creation
+    end
     
-    module_dependencies %{
-      optional: [:sales, :inventory],
-      required: [:general_ledger]
-    }
+    # Manual fallback
+    user_task :manual_invoice_creation do
+      name "Manual Invoice Creation"
+      assignee "ar_clerk"
+      
+      form do
+        field :invoice_number, :string
+        field :amount, :decimal
+        field :due_date, :date
+      end
+    end
+    
+    # Compensation handlers
+    compensation :reverse_payment_application do
+      agent AccountsReceivables.Agents.PaymentAgent do
+        action :reverse_payment
+        params %{payment_id: "{{payment_result.payment_id}}"}
+      end
+    end
   end
 end
-```
 
-## 2. Credit Management Workflow
+defmodule AccountsReceivables.BPMN.CollectionsWorkflow do
+  use AccountsReceivables.BPMN.ProcessBase,
+    name: "collections_workflow",
+    version: "1.0.0"
+  
+  use Jido.BPMN
+  
+  process "collections_workflow" do
+    @doc """
+    Multi-stage collections process with escalating actions
+    """
+    
+    start_event :collection_initiated do
+      input [:invoice_id, :customer_id, :amount_due]
+      
+      output :collection_context
+    end
+    
+    # Determine collection strategy using AI
+    service_task :determine_strategy do
+      name "AI Collection Strategy"
+      
+      agent AccountsReceivables.Agents.AICollectionAgent do
+        action :analyze_customer_profile
+        params %{
+          customer_id: "{{customer_id}}",
+          payment_history: "{{collection_context.payment_history}}",
+          outstanding_amount: "{{amount_due}}",
+          account_age: "{{collection_context.account_age}}"
+        }
+        
+        ai_enabled true
+        model "gpt-4"
+      end
+      
+      output :collection_strategy
+    end
+    
+    # Multi-instance subprocess for dunning levels
+    multi_instance_subprocess :dunning_sequence do
+      name "Execute Dunning Levels"
+      
+      collection "{{collection_strategy.dunning_levels}}"
+      variable :dunning_level
+      
+      start_event :level_start
+      
+      # Check current status
+      service_task :check_current_status do
+        name "Check Payment Status"
+        
+        agent AccountsReceivables.Agents.PaymentAgent do
+          action :check_invoice_status
+          params %{invoice_id: "{{invoice_id}}"}
+        end
+        
+        output :current_status
+      end
+      
+      # Skip if paid
+      exclusive_gateway :payment_check do
+        flow :already_paid do
+          condition "{{current_status.paid}} == true"
+          target :dunning_complete
+        end
+        
+        flow :continue_dunning do
+          target :execute_dunning_action
+        end
+      end
+      
+      # Execute dunning action based on level
+      service_task :execute_dunning_action do
+        name "Execute Dunning Action"
+        
+        agent AccountsReceivables.Agents.DunningAgent do
+          action :execute_level
+          params %{
+            level: "{{dunning_level.level}}",
+            channel: "{{dunning_level.channel}}",
+            template: "{{dunning_level.template_id}}",
+            customer_id: "{{customer_id}}",
+            invoice_id: "{{invoice_id}}"
+          }
+        end
+        
+        output :dunning_result
+      end
+      
+      # Log dunning action
+      service_task :log_dunning do
+        name "Log Collection Activity"
+        
+        emit_event do
+          type "collection.dunning.executed"
+          data %{
+            invoice_id: "{{invoice_id}}",
+            level: "{{dunning_level.level}}",
+            channel: "{{dunning_level.channel}}",
+            result: "{{dunning_result}}"
+          }
+        end
+      end
+      
+      # Wait between levels
+      timer_intermediate_event :wait_for_response do
+        name "Wait for Customer Response"
+        time_duration "{{dunning_level.wait_period}}"
+      end
+      
+      end_event :dunning_complete
+    end
+    
+    # Check if payment plan needed
+    exclusive_gateway :payment_plan_decision do
+      name "Payment Plan Needed?"
+      
+      flow :plan_requested do
+        condition "{{collection_strategy.offer_payment_plan}} == true"
+        target :create_payment_plan
+      end
+      
+      flow :escalate do
+        condition "{{collection_strategy.escalate_to_agency}} == true"
+        target :external_collection
+      end
+      
+      default :continue_internal
+    end
+    
+    # Payment plan creation
+    sub_process :create_payment_plan do
+      name "Payment Plan Management"
+      
+      start_event :plan_start
+      
+      # Calculate plan options
+      service_task :calculate_options do
+        name "Calculate Payment Plan Options"
+        
+        agent AccountsReceivables.Agents.PaymentPlanAgent do
+          action :generate_plan_options
+          params %{
+            total_amount: "{{amount_due}}",
+            customer_credit_score: "{{collection_strategy.credit_score}}",
+            max_term: "{{collection_strategy.max_payment_term}}"
+          }
+        end
+        
+        output :plan_options
+      end
+      
+      # Customer approval
+      user_task :approve_plan do
+        name "Customer Plan Selection"
+        assignee "{{customer_id}}"
+        
+        form do
+          field :selected_plan, :enum, options: "{{plan_options}}"
+          field :first_payment_date, :date
+          field :payment_method, :string
+        end
+        
+        timeout "P3D"
+        on_timeout :plan_rejected
+        
+        output :selected_plan
+      end
+      
+      # Create plan agreement
+      service_task :create_agreement do
+        name "Create Payment Agreement"
+        
+        agent AccountsReceivables.Agents.AgreementAgent do
+          action :create_payment_agreement
+          params %{
+            invoice_id: "{{invoice_id}}",
+            plan: "{{selected_plan}}",
+            terms: "{{plan_options[selected_plan.selected_plan]}}"
+          }
+        end
+        
+        output :agreement
+      end
+      
+      # Schedule payments
+      service_task :schedule_payments do
+        name "Schedule Automated Payments"
+        
+        agent AccountsReceivables.Agents.PaymentScheduler do
+          action :create_recurring_schedule
+          params %{
+            agreement_id: "{{agreement.id}}",
+            schedule: "{{agreement.payment_schedule}}"
+          }
+        end
+      end
+      
+      end_event :plan_created
+    end
+    
+    # External collection agency
+    sub_process :external_collection do
+      name "External Agency Collection"
+      
+      start_event :agency_start
+      
+      # Select agency
+      business_rule_task :select_agency do
+        name "Select Collection Agency"
+        
+        dmn_table "collection_agency_selection"
+        input %{
+          amount: "{{amount_due}}",
+          region: "{{collection_context.customer_region}}",
+          invoice_age: "{{collection_context.days_overdue}}"
+        }
+        
+        output :selected_agency
+      end
+      
+      # Transfer to agency
+      service_task :transfer_to_agency do
+        name "Transfer to Collection Agency"
+        
+        handle_unavailable_application :external_collections do
+          agent AccountsReceivables.Agents.FallbackCollectionAgent do
+            action :queue_for_manual_transfer
+          end
+        end
+        
+        agent ExternalCollections.Agents.TransferAgent do
+          action :transfer_account
+          params %{
+            agency_id: "{{selected_agency.id}}",
+            invoice_id: "{{invoice_id}}",
+            documentation: "{{collection_context.documentation}}"
+          }
+        end
+        
+        output :transfer_result
+      end
+      
+      # Monitor agency progress
+      receive_task :agency_updates do
+        name "Receive Agency Updates"
+        
+        message_ref "agency.collection.update"
+        correlation_key "{{transfer_result.case_id}}"
+        
+        loop do
+          condition "{{agency_update.status}} != 'closed'"
+          max_iterations 12  # Monitor for up to 12 months
+          
+          timer_event "P1M"  # Check monthly
+        end
+        
+        output :agency_results
+      end
+      
+      end_event :agency_collection_complete
+    end
+    
+    # Write-off decision
+    exclusive_gateway :write_off_decision do
+      name "Write-off Decision"
+      
+      flow :recovered do
+        condition "{{collection_result.amount_recovered}} > 0"
+        target :apply_recovery
+      end
+      
+      flow :write_off do
+        condition "{{collection_strategy.recommend_write_off}} == true"
+        target :process_write_off
+      end
+      
+      default :continue_monitoring
+    end
+    
+    # Apply recovered amount
+    service_task :apply_recovery do
+      name "Apply Recovered Amount"
+      
+      agent AccountsReceivables.Agents.PaymentAgent do
+        action :apply_partial_payment
+        params %{
+          invoice_id: "{{invoice_id}}",
+          amount: "{{collection_result.amount_recovered}}",
+          source: "collection_recovery"
+        }
+      end
+    end
+    
+    # Process write-off
+    service_task :process_write_off do
+      name "Process Bad Debt Write-off"
+      
+      agent AccountsReceivables.Agents.WriteOffAgent do
+        action :create_write_off
+        params %{
+          invoice_id: "{{invoice_id}}",
+          reason: "{{collection_result.write_off_reason}}",
+          approval: "{{collection_strategy.write_off_approval}}"
+        }
+        
+        compensate :reverse_write_off
+      end
+      
+      emit_event do
+        type "invoice.written_off"
+        data %{
+          invoice_id: "{{invoice_id}}",
+          amount: "{{amount_due}}",
+          reason: "{{collection_result.write_off_reason}}"
+        }
+      end
+    end
+    
+    # Continue monitoring
+    timer_intermediate_event :continue_monitoring do
+      name "Continue Monitoring"
+      time_duration "P30D"
+      
+      flow_to :check_current_status
+    end
+    
+    end_event :collection_complete do
+      name "Collection Process Complete"
+    end
+  end
+end
 
-```elixir
-defmodule AccountEx.AR.Processes.CreditManagement do
-  @moduledoc """
-  Comprehensive credit management including evaluation, monitoring, and limit adjustments.
-  Uses ML-based scoring when available, falls back to rule-based evaluation.
-  """
+defmodule AccountsReceivables.BPMN.CreditManagement do
+  use AccountsReceivables.BPMN.ProcessBase,
+    name: "credit_management",
+    version: "1.0.0"
   
-  use AccountEx.AccountsReceivables.BPMN.DSL
+  use Jido.BPMN
   
-  process id: :credit_evaluation do
-    tenant_aware true
+  process "credit_management" do
+    @doc """
+    Customer credit assessment and management process
+    """
     
     start_event :credit_request do
-      multiple_triggers [
-        {signal: "accountex.ar.credit_check_requested"},
-        {message: "CreditEvaluationRequest"},
-        {timer: "R/P3M"}  # Quarterly review
-      ]
+      conditional do
+        any_of [
+          message_ref: "customer.credit.requested",
+          timer_cycle: "R/P1M"  # Monthly review
+        ]
+      end
+      
+      output :credit_context
     end
     
-    # ============================================
-    # Parallel Credit Analysis
-    # ============================================
-    
-    parallel_gateway :analysis_start
-    
-    # Internal credit history
-    agent_task :internal_analysis do
-      incoming :analysis_start
+    # Parallel gateway for multiple credit checks
+    parallel_gateway :credit_checks_start do
+      name "Initiate Credit Checks"
       
-      agent AccountEx.AR.Agents.CreditHistoryAnalyzer
-      action :analyze_payment_patterns
-      
-      input %{
-        customer_id: "$.customer_id",
-        period_months: 12,
-        include_disputes: true
-      }
-      
-      metrics [
-        :average_days_to_pay,
-        :payment_consistency,
-        :dispute_frequency,
-        :nsf_occurrences
-      ]
+      flow :internal_assessment
+      flow :external_bureau_check
+      flow :trade_reference_check
     end
     
-    # External credit bureau (with fallback)
-    service_task :external_credit_check do
-      incoming :analysis_start
+    # Internal credit assessment
+    service_task :internal_assessment do
+      name "Internal Credit Score"
       
-      resilient_call AccountEx.External.CreditBureau do
-        timeout 30_000
+      agent AccountsReceivables.Agents.CreditScoringAgent do
+        action :calculate_internal_score
+        params %{
+          customer_id: "{{credit_context.customer_id}}",
+          payment_history: "{{credit_context.payment_history}}",
+          account_age: "{{credit_context.account_age}}",
+          order_frequency: "{{credit_context.order_patterns}}"
+        }
+      end
+      
+      output :internal_score
+    end
+    
+    # External credit bureau check
+    service_task :external_bureau_check do
+      name "Credit Bureau Check"
+      
+      agent AccountsReceivables.Agents.CreditBureauAgent do
+        action :get_credit_report
+        params %{
+          business_id: "{{credit_context.business_id}}",
+          authorized: "{{credit_context.bureau_consent}}"
+        }
         
-        fallback do
-          use_cached_score(customer_id: "$.customer_id", max_age: "P7D")
+        timeout "PT30S"
+        retry_policy do
+          max_attempts 2
+          backoff :linear
         end
       end
       
-      cache_result true
-      cache_duration "P30D"
+      output :bureau_report
     end
     
-    # ML risk scoring (optional module)
-    agent_task :ai_risk_scoring do
-      incoming :analysis_start
+    # Trade references
+    multi_instance_task :trade_reference_check do
+      name "Check Trade References"
       
-      agent AccountEx.AR.Agents.MLRiskScorer
-      action :predict_payment_risk
+      collection "{{credit_context.trade_references}}"
+      variable :reference
+      completion_condition "{{completed_count}} >= 2"  # Need at least 2 references
       
-      optional true  # Skip if ML module unavailable
-      
-      input %{
-        customer_features: "$.customer_profile",
-        transaction_history: "$.transaction_history",
-        market_conditions: "$.market_data"
-      }
-      
-      model_version "3.2.1"
-      confidence_threshold 0.75
-    end
-    
-    parallel_gateway :analysis_join do
-      synchronize [:internal_analysis, :external_credit_check, :ai_risk_scoring]
-      partial_sync_allowed true  # Continue if optional tasks fail
-    end
-    
-    # ============================================
-    # Credit Scoring and Limit Calculation
-    # ============================================
-    
-    service_task :calculate_credit_score do
-      implementation :weighted_scoring
-      
-      weights %{
-        internal_history: 0.35,
-        external_score: 0.30,
-        ai_prediction: 0.20,
-        financial_metrics: 0.15
-      }
-      
-      adjust_for_missing_data true
-    end
-    
-    business_rule_task :determine_credit_limit do
-      dmn_table :credit_limit_rules
-      
-      input %{
-        credit_score: "$.calculated_score",
-        customer_segment: "$.customer.segment",
-        annual_revenue: "$.customer.annual_revenue",
-        industry_risk: "$.customer.industry_risk_rating",
-        relationship_length: "$.customer.years_active"
-      }
-      
-      output %{
-        recommended_limit: :decimal,
-        payment_terms: :string,
-        review_frequency: :string,
-        collateral_required: :boolean
-      }
-    end
-    
-    # ============================================
-    # Approval Workflow
-    # ============================================
-    
-    exclusive_gateway :approval_routing do
-      condition :auto_approve, expr: "$.recommended_limit <= 50000"
-      condition :manager_review, expr: "$.recommended_limit <= 200000"
-      condition :executive_review, expr: "$.recommended_limit > 200000"
-    end
-    
-    user_task :manager_approval do
-      incoming :manager_review
-      
-      assignee expr: "get_credit_manager($.customer.region)"
-      escalation after: "PT4H", to: "senior_credit_manager"
-      
-      decision_support %{
-        customer_dashboard: true,
-        peer_comparison: true,
-        risk_indicators: true
-      }
-    end
-    
-    user_task :executive_approval do
-      incoming :executive_review
-      
-      assignee role: "cfo"
-      delegate_to ["finance_director", "credit_director"]
-      
-      require_justification true
-      require_risk_mitigation_plan "$.recommended_limit > 500000"
-    end
-    
-    # ============================================
-    # Update Credit Limit
-    # ============================================
-    
-    service_task :update_credit_limit do
-      incoming [:auto_approve, :manager_approval, :executive_approval]
-      
-      command AccountEx.AR.Commands.UpdateCreditLimit do
-        aggregate_id "$.customer_id"
-        
-        payload %{
-          new_limit: "$.approved_limit",
-          payment_terms: "$.payment_terms",
-          effective_date: now(),
-          approved_by: "$.approver",
-          next_review_date: "$.next_review_date"
+      agent AccountsReceivables.Agents.ReferenceAgent do
+        action :verify_trade_reference
+        params %{
+          reference_contact: "{{reference}}",
+          customer_name: "{{credit_context.customer_name}}"
         }
       end
       
-      publish_event "CreditLimitUpdated"
+      output :reference_results
     end
     
-    # ============================================
-    # Notifications and Integration
-    # ============================================
+    # Synchronize results
+    parallel_gateway :credit_checks_complete do
+      name "Aggregate Credit Data"
+      converge true
+    end
     
-    parallel_gateway :notification_split
-    
-    signal_event :notify_sales do
-      incoming :notification_split
+    # AI-powered credit decision
+    service_task :ai_credit_decision do
+      name "AI Credit Analysis"
       
-      signal AccountEx.Signals.CreditLimitChanged do
-        type "accountex.ar.credit_limit_updated"
+      agent AccountsReceivables.Agents.AICreditAgent do
+        action :comprehensive_credit_analysis
+        params %{
+          internal_score: "{{internal_score}}",
+          bureau_report: "{{bureau_report}}",
+          trade_references: "{{reference_results}}",
+          requested_limit: "{{credit_context.requested_limit}}",
+          industry_risk: "{{credit_context.industry_risk_factor}}"
+        }
         
+        ai_enabled true
+        model "credit-risk-model-v2"
+        confidence_threshold 0.85
+      end
+      
+      output :ai_recommendation
+    end
+    
+    # Credit decision gateway
+    exclusive_gateway :credit_decision do
+      name "Credit Decision"
+      
+      flow :auto_approved do
+        condition "{{ai_recommendation.decision}} == 'approve' && {{ai_recommendation.confidence}} >= 0.95"
+        target :approve_credit
+      end
+      
+      flow :auto_rejected do
+        condition "{{ai_recommendation.decision}} == 'reject' && {{ai_recommendation.confidence}} >= 0.95"
+        target :reject_credit
+      end
+      
+      flow :manual_review do
+        condition "{{ai_recommendation.confidence}} < 0.95"
+        target :manual_credit_review
+      end
+    end
+    
+    # Manual review process
+    user_task :manual_credit_review do
+      name "Manual Credit Review"
+      assignee role: "credit_manager"
+      
+      form do
+        field :decision, :enum, options: [:approve, :reject, :conditional]
+        field :approved_limit, :decimal
+        field :conditions, :text
+        field :review_notes, :text
+      end
+      
+      sla "PT4H"  # 4 hour SLA
+      escalation do
+        after "PT2H"
+        to role: "credit_director"
+      end
+      
+      output :manual_decision
+    end
+    
+    # Approve credit
+    service_task :approve_credit do
+      name "Approve Credit Limit"
+      
+      agent AccountsReceivables.Agents.CustomerAgent do
+        action :update_credit_terms
+        params %{
+          customer_id: "{{credit_context.customer_id}}",
+          credit_limit: "{{ai_recommendation.recommended_limit}}",
+          payment_terms: "{{ai_recommendation.payment_terms}}",
+          review_date: "{{ai_recommendation.next_review_date}}"
+        }
+      end
+      
+      emit_event do
+        type "credit.approved"
         data %{
-          customer_id: "$.customer_id",
-          new_limit: "$.approved_limit",
-          previous_limit: "$.previous_limit"
+          customer_id: "{{credit_context.customer_id}}",
+          limit: "{{ai_recommendation.recommended_limit}}",
+          terms: "{{ai_recommendation.payment_terms}}"
+        }
+      end
+      
+      output :approval_result
+    end
+    
+    # Reject credit
+    service_task :reject_credit do
+      name "Reject Credit Request"
+      
+      agent AccountsReceivables.Agents.CustomerAgent do
+        action :reject_credit_request
+        params %{
+          customer_id: "{{credit_context.customer_id}}",
+          reason: "{{ai_recommendation.rejection_reason}}",
+          suggestions: "{{ai_recommendation.improvement_suggestions}}"
+        }
+      end
+      
+      output :rejection_result
+    end
+    
+    # Set up monitoring
+    service_task :setup_monitoring do
+      name "Setup Credit Monitoring"
+      
+      agent AccountsReceivables.Agents.MonitoringAgent do
+        action :create_credit_monitor
+        params %{
+          customer_id: "{{credit_context.customer_id}}",
+          triggers: "{{ai_recommendation.monitoring_triggers}}",
+          frequency: "{{ai_recommendation.review_frequency}}"
+        }
+      end
+    end
+    
+    # Send notification
+    send_task :notify_stakeholders do
+      name "Notify Stakeholders"
+      
+      signal do
+        type "credit.decision.complete"
+        source "/accounts_receivables/credit_management"
+        data %{
+          customer_id: "{{credit_context.customer_id}}",
+          decision: "{{credit_decision}}",
+          limit: "{{approval_result.credit_limit}}"
         }
         
-        routing ["sales", "customer_service"]
+        dispatch do
+          pubsub topic: "credit_decisions"
+          bus target: :sales_team
+          email to: "{{credit_context.requestor_email}}"
+        end
       end
     end
     
-    service_task :update_erp_master do
-      incoming :notification_split
-      
-      resilient_call AccountEx.MasterData.UpdateCustomer do
-        retry_on_failure true
-        async_if_unavailable true
-      end
-    end
-    
-    agent_task :update_monitoring_rules do
-      incoming :notification_split
-      
-      agent AccountEx.AR.Agents.CreditMonitor
-      action :configure_alerts
-      
-      rules %{
-        utilization_threshold: 0.8,
-        velocity_check: true,
-        unusual_pattern_detection: true
-      }
-    end
-    
-    parallel_gateway :notification_join
-    
-    end_event :evaluation_complete
-  end
-  
-  # ============================================
-  # Continuous Credit Monitoring
-  # ============================================
-  
-  process id: :credit_monitoring do
-    
-    start_event :monitoring_trigger do
-      multiple_triggers [
-        {timer: "R/P1M"},  # Monthly check
-        {signal: "accountex.ar.payment_anomaly_detected"},
-        {signal: "accountex.external.credit_alert"}
-      ]
-    end
-    
-    service_task :gather_monitoring_data do
-      queries [
-        AccountEx.AR.Queries.CustomerPaymentTrends,
-        AccountEx.AR.Queries.CreditUtilization,
-        AccountEx.AR.Queries.DisputeHistory
-      ]
-      
-      parallel_execution true
-    end
-    
-    agent_task :analyze_credit_health do
-      agent AccountEx.AR.Agents.CreditMonitor
-      action :assess_credit_deterioration
-      
-      indicators [
-        :payment_slowdown,
-        :increased_disputes,
-        :utilization_spike,
-        :external_credit_drop
-      ]
-      
-      thresholds %{
-        payment_delay_increase: 10,  # days
-        utilization_ratio: 0.9,
-        credit_score_drop: 50
-      }
-    end
-    
-    exclusive_gateway :action_required do
-      condition :maintain, expr: "$.risk_level == 'low'"
-      condition :review, expr: "$.risk_level == 'medium'"
-      condition :immediate_action, expr: "$.risk_level == 'high'"
-    end
-    
-    call_activity :trigger_review do
-      incoming :review
-      
-      called_process :credit_evaluation
-      async false
-    end
-    
-    subprocess :immediate_actions do
-      incoming :immediate_action
-      
-      parallel_gateway :action_split
-      
-      service_task :reduce_credit_limit do
-        command AccountEx.AR.Commands.TemporarilyReduceLimit
-        percentage 0.5
-      end
-      
-      service_task :require_prepayment do
-        command AccountEx.AR.Commands.SetPaymentTerms
-        terms "prepayment_required"
-      end
-      
-      signal_event :alert_stakeholders do
-        signal AccountEx.Signals.CreditRiskAlert
-        severity :high
-        recipients ["credit_manager", "sales_manager", "cfo"]
-      end
-      
-      parallel_gateway :action_join
-    end
-    
-    end_event :monitoring_cycle_complete
+    end_event :credit_process_complete
   end
 end
-```
 
-## 3. Payment Processing Flow
-
-```elixir
-defmodule AccountEx.AR.Processes.PaymentProcessing do
-  @moduledoc """
-  Handles payment receipt, matching, allocation, and reconciliation.
-  Supports multiple payment methods and partial payments.
-  """
+defmodule AccountsReceivables.BPMN.PaymentProcessing do
+  use AccountsReceivables.BPMN.ProcessBase,
+    name: "payment_processing",
+    version: "1.0.0"
   
-  use AccountEx.AccountsReceivables.BPMN.DSL
+  use Jido.BPMN
   
-  process id: :payment_processing do
-    tenant_aware true
+  process "payment_processing" do
+    @doc """
+    Payment receipt, validation, and application process
+    """
     
     start_event :payment_received do
-      multiple_triggers [
-        {signal: "accountex.bank.payment_detected"},
-        {message: "PaymentGatewayNotification"},
-        {api: "DirectPaymentSubmission"}
-      ]
+      message_ref "payment.incoming"
       
-      deduplicate_by [:payment_reference, :amount, :date]
+      output :payment_data
     end
     
-    # ============================================
-    # Payment Validation
-    # ============================================
-    
+    # Validate payment
     service_task :validate_payment do
-      validations [
-        {amount_positive: "$.amount > 0"},
-        {valid_currency: "$.currency in supported_currencies()"},
-        {no_duplicate: "not payment_exists($.reference)"},
-        {customer_exists: "customer_active($.customer_id)"}
-      ]
+      name "Validate Payment"
       
-      boundary_event :validation_failed do
-        error_types [:validation_error]
-        flows_to :handle_invalid_payment
+      agent AccountsReceivables.Agents.ValidationAgent do
+        action :validate_payment
+        params %{
+          payment_method: "{{payment_data.method}}",
+          amount: "{{payment_data.amount}}",
+          reference: "{{payment_data.reference}}",
+          payer_info: "{{payment_data.payer}}"
+        }
+      end
+      
+      output :validation_result
+    end
+    
+    # Check validation result
+    exclusive_gateway :validation_check do
+      name "Payment Valid?"
+      
+      flow :valid do
+        condition "{{validation_result.valid}} == true"
+        target :identify_customer
+      end
+      
+      flow :invalid do
+        condition "{{validation_result.valid}} == false"
+        target :handle_invalid_payment
       end
     end
     
-    # ============================================
-    # Intelligent Payment Matching
-    # ============================================
-    
-    agent_task :match_payment do
-      agent AccountEx.AR.Agents.PaymentMatcher
-      action :find_matching_invoices
+    # Handle invalid payment
+    sub_process :handle_invalid_payment do
+      name "Invalid Payment Handling"
       
-      strategies [
-        {exact_reference: weight: 1.0},
-        {amount_match: weight: 0.8},
-        {customer_pattern: weight: 0.7},
-        {ml_prediction: weight: 0.6}
-      ]
+      start_event :invalid_start
       
-      confidence_threshold 0.75
-      
-      output %{
-        matched_invoices: :list,
-        confidence_score: :float,
-        unallocated_amount: :decimal
-      }
-    end
-    
-    exclusive_gateway :matching_result do
-      condition :single_match, expr: "length($.matched_invoices) == 1"
-      condition :multi_match, expr: "length($.matched_invoices) > 1"
-      condition :no_match, expr: "length($.matched_invoices) == 0"
-      condition :low_confidence, expr: "$.confidence_score < 0.75"
-    end
-    
-    # ============================================
-    # Manual Matching
-    # ============================================
-    
-    user_task :manual_matching do
-      incoming [:no_match, :low_confidence]
-      
-      assignee role: "ar_specialist"
-      
-      ui_component :payment_matching_widget do
-        show_suggested_matches true
-        allow_partial_allocation true
-        show_customer_history true
-      end
-      
-      assistance_available AccountEx.AR.Bots.MatchingAssistant
-    end
-    
-    # ============================================
-    # Payment Allocation
-    # ============================================
-    
-    subprocess :allocate_payment do
-      incoming [:single_match, :multi_match, :manual_matching]
-      
-      multi_instance :per_invoice_allocation do
-        collection "$.matched_invoices"
+      user_task :review_payment do
+        name "Manual Payment Review"
+        assignee "ar_specialist"
         
-        service_task :calculate_allocation do
-          strategy "$.allocation_strategy"  # FIFO, LIFO, Pro-rata, Directed
-          
-          consider %{
-            principal_first: true,
-            late_fees: true,
-            discounts: "$.payment_date <= $.discount_date"
+        form do
+          field :action, :enum, options: [:return, :hold, :accept_with_adjustment]
+          field :adjustment_amount, :decimal
+          field :notes, :text
+        end
+        
+        output :review_decision
+      end
+      
+      service_task :process_return do
+        name "Process Payment Return"
+        condition "{{review_decision.action}} == :return"
+        
+        agent AccountsReceivables.Agents.PaymentAgent do
+          action :return_payment
+          params %{
+            payment_id: "{{payment_data.id}}",
+            reason: "{{validation_result.errors}}"
           }
         end
-        
-        service_task :apply_to_invoice do
-          command AccountEx.AR.Commands.AllocatePaymentToInvoice do
-            aggregate_id "$.invoice_id"
-            
-            payload %{
-              payment_id: "$.payment_id",
-              allocated_amount: "$.calculated_allocation",
-              payment_date: "$.payment_date"
-            }
-          end
-          
-          compensation :reverse_allocation
-        end
-        
-        exclusive_gateway :check_invoice_status do
-          condition :fully_paid, expr: "$.invoice.balance == 0"
-          condition :partially_paid, expr: "$.invoice.balance > 0"
-        end
-        
-        signal_event :invoice_paid do
-          incoming :fully_paid
-          
-          signal AccountEx.Signals.InvoicePaid do
-            type "accountex.ar.invoice_paid"
-            
-            data %{
-              invoice_id: "$.invoice_id",
-              payment_id: "$.payment_id",
-              paid_date: "$.payment_date"
-            }
-          end
-        end
       end
       
-      # Handle overpayment
-      exclusive_gateway :check_overpayment do
-        condition :exact_amount, expr: "$.unallocated_amount == 0"
-        condition :overpayment, expr: "$.unallocated_amount > 0"
-        condition :short_payment, expr: "$.unallocated_amount < 0"
+      end_event :invalid_handled
+    end
+    
+    # Identify customer and invoices
+    service_task :identify_customer do
+      name "Identify Customer"
+      
+      agent AccountsReceivables.Agents.CustomerMatchingAgent do
+        action :match_payment_to_customer
+        params %{
+          payment_reference: "{{payment_data.reference}}",
+          payer_name: "{{payment_data.payer.name}}",
+          payer_account: "{{payment_data.payer.account}}"
+        }
+        
+        ai_enabled true
+        confidence_threshold 0.9
+      end
+      
+      output :customer_match
+    end
+    
+    # AI-powered invoice matching
+    service_task :match_invoices do
+      name "AI Invoice Matching"
+      
+      agent AccountsReceivables.Agents.AIMatchingAgent do
+        action :match_payment_to_invoices
+        params %{
+          customer_id: "{{customer_match.customer_id}}",
+          payment_amount: "{{payment_data.amount}}",
+          payment_reference: "{{payment_data.reference}}",
+          open_invoices: "{{customer_match.open_invoices}}"
+        }
+        
+        ai_enabled true
+        model "payment-matching-v3"
+      end
+      
+      output :invoice_matches
+    end
+    
+    # Check matching confidence
+    exclusive_gateway :matching_confidence do
+      name "Matching Confidence"
+      
+      flow :high_confidence do
+        condition "{{invoice_matches.confidence}} >= 0.95"
+        target :auto_apply_payment
+      end
+      
+      flow :medium_confidence do
+        condition "{{invoice_matches.confidence}} >= 0.75"
+        target :review_matches
+      end
+      
+      flow :low_confidence do
+        condition "{{invoice_matches.confidence}} < 0.75"
+        target :manual_allocation
+      end
+    end
+    
+    # Review suggested matches
+    user_task :review_matches do
+      name "Review Suggested Matches"
+      assignee "ar_clerk"
+      
+      form do
+        field :confirm_matches, :boolean
+        field :adjustments, :array
+        field :notes, :text
+      end
+      
+      timeout "PT2H"
+      
+      output :review_result
+    end
+    
+    # Manual allocation
+    user_task :manual_allocation do
+      name "Manual Payment Allocation"
+      assignee "ar_specialist"
+      
+      form do
+        field :allocations, :array do
+          field :invoice_id, :string
+          field :amount, :decimal
+        end
+        field :unapplied_amount, :decimal
+        field :notes, :text
+      end
+      
+      output :manual_allocations
+    end
+    
+    # Auto-apply payment
+    service_task :auto_apply_payment do
+      name "Auto-Apply Payment"
+      
+      agent AccountsReceivables.Agents.PaymentApplicationAgent do
+        action :apply_payment_to_invoices
+        params %{
+          payment_id: "{{payment_data.id}}",
+          allocations: "{{invoice_matches.allocations}}",
+          customer_id: "{{customer_match.customer_id}}"
+        }
+        
+        compensate :reverse_payment_application
+      end
+      
+      output :application_result
+    end
+    
+    # Handle payment differences
+    exclusive_gateway :payment_difference do
+      name "Payment Difference?"
+      
+      flow :exact_match do
+        condition "{{application_result.difference}} == 0"
+        target :update_records
+      end
+      
+      flow :overpayment do
+        condition "{{application_result.difference}} > 0"
+        target :handle_overpayment
+      end
+      
+      flow :underpayment do
+        condition "{{application_result.difference}} < 0"
+        target :handle_underpayment
+      end
+    end
+    
+    # Handle overpayment
+    sub_process :handle_overpayment do
+      name "Overpayment Processing"
+      
+      start_event :overpayment_start
+      
+      exclusive_gateway :overpayment_action do
+        flow :apply_credit do
+          condition "{{application_result.difference}} < {{customer_match.credit_threshold}}"
+          target :create_credit_memo
+        end
+        
+        flow :refund do
+          condition "{{customer_match.prefers_refund}} == true"
+          target :process_refund
+        end
+        
+        default :hold_as_credit
       end
       
       service_task :create_credit_memo do
-        incoming :overpayment
+        name "Create Credit Memo"
         
-        command AccountEx.AR.Commands.CreateCreditMemo do
-          payload %{
-            customer_id: "$.customer_id",
-            amount: "$.unallocated_amount",
-            source: "payment_overage",
-            payment_ref: "$.payment_id"
+        agent AccountsReceivables.Agents.CreditMemoAgent do
+          action :create_credit
+          params %{
+            customer_id: "{{customer_match.customer_id}}",
+            amount: "{{application_result.difference}}",
+            payment_ref: "{{payment_data.id}}"
           }
+        end
+      end
+      
+      service_task :process_refund do
+        name "Process Refund"
+        
+        agent AccountsReceivables.Agents.RefundAgent do
+          action :initiate_refund
+          params %{
+            payment_id: "{{payment_data.id}}",
+            amount: "{{application_result.difference}}",
+            method: "{{payment_data.method}}"
+          }
+        end
+      end
+      
+      end_event :overpayment_handled
+    end
+    
+    # Handle underpayment
+    service_task :handle_underpayment do
+      name "Handle Short Payment"
+      
+      agent AccountsReceivables.Agents.ShortPaymentAgent do
+        action :process_short_payment
+        params %{
+          invoice_id: "{{application_result.primary_invoice}}",
+          short_amount: "{{application_result.difference * -1}}",
+          tolerance: "{{customer_match.payment_tolerance}}"
+        }
+      end
+      
+      output :short_payment_result
+    end
+    
+    # Update all records
+    parallel_gateway :update_start do
+      name "Update Systems"
+      
+      flow :update_ar
+      flow :update_gl
+      flow :update_bank_rec
+    end
+    
+    service_task :update_records do
+      name "Update AR Records"
+      
+      agent AccountsReceivables.Agents.RecordAgent do
+        action :update_payment_records
+        params %{
+          payment: "{{application_result}}",
+          invoices: "{{application_result.updated_invoices}}"
+        }
+      end
+    end
+    
+    service_task :update_gl do
+      name "Update General Ledger"
+      
+      handle_unavailable_application :general_ledger do
+        agent AccountsReceivables.Agents.GLQueueAgent do
+          action :queue_gl_update
+        end
+      end
+      
+      agent GeneralLedger.Agents.PostingAgent do
+        action :post_cash_receipt
+        params %{
+          payment: "{{application_result}}",
+          gl_accounts: "{{application_result.gl_mapping}}"
+        }
+      end
+    end
+    
+    service_task :update_bank_rec do
+      name "Update Bank Reconciliation"
+      
+      agent AccountsReceivables.Agents.BankRecAgent do
+        action :mark_payment_cleared
+        params %{
+          payment_id: "{{payment_data.id}}",
+          bank_reference: "{{payment_data.bank_reference}}"
+        }
+      end
+    end
+    
+    parallel_gateway :update_complete do
+      converge true
+    end
+    
+    # Send confirmation
+    send_task :send_confirmation do
+      name "Send Payment Confirmation"
+      
+      signal do
+        type "payment.processed"
+        source "/accounts_receivables/payment_processing"
+        data %{
+          payment_id: "{{payment_data.id}}",
+          customer_id: "{{customer_match.customer_id}}",
+          amount: "{{payment_data.amount}}",
+          invoices_paid: "{{application_result.invoices_paid}}"
+        }
+        
+        dispatch do
+          email to: "{{customer_match.email}}"
+          pubsub topic: "payment_confirmations"
         end
       end
     end
     
-    # ============================================
-    # Record Payment & Update Balances
-    # ============================================
+    end_event :payment_complete
     
-    service_task :record_payment_event do
-      command AccountEx.AR.Commands.RecordPayment do
-        aggregate_id "$.payment_id"
-        
-        payload %{
-          customer_id: "$.customer_id",
-          amount: "$.amount",
-          payment_method: "$.method",
-          reference: "$.reference",
-          allocated_invoices: "$.allocations"
+    # Compensation handler
+    compensation :reverse_payment_application do
+      agent AccountsReceivables.Agents.PaymentAgent do
+        action :reverse_application
+        params %{
+          payment_id: "{{payment_data.id}}",
+          application_id: "{{application_result.id}}"
         }
-      end
-      
-      publish_event "PaymentRecorded"
-    end
-    
-    agent_task :update_customer_metrics do
-      agent AccountEx.AR.Agents.CustomerMetrics
-      action :recalculate_statistics
-      
-      metrics [
-        :current_balance,
-        :days_sales_outstanding,
-        :payment_velocity,
-        :credit_utilization
-      ]
-      
-      async true
-    end
-    
-    # ============================================
-    # Notifications
-    # ============================================
-    
-    parallel_gateway :notification_start
-    
-    service_task :notify_customer do
-      incoming :notification_start
-      
-      template :payment_received
-      channels [:email, :sms, :portal]
-      
-      include %{
-        payment_details: true,
-        updated_balance: true,
-        next_invoice_due: true
-      }
-    end
-    
-    signal_event :notify_sales do
-      incoming :notification_start
-      condition "$.amount > 10000"
-      
-      signal AccountEx.Signals.HighValuePayment do
-        type "accountex.ar.high_value_payment"
-        
-        data %{
-          customer_id: "$.customer_id",
-          amount: "$.amount"
-        }
-      end
-    end
-    
-    service_task :update_dashboards do
-      incoming :notification_start
-      
-      projections [
-        AccountEx.AR.Projections.CashflowForecast,
-        AccountEx.AR.Projections.AgingReport,
-        AccountEx.AR.Projections.CollectionMetrics
-      ]
-      
-      async true
-    end
-    
-    parallel_gateway :notification_join
-    
-    # ============================================
-    # Bank Reconciliation Integration
-    # ============================================
-    
-    signal_event :trigger_reconciliation do
-      signal AccountEx.Signals.PaymentForReconciliation do
-        type "accountex.ar.payment_for_reconciliation"
-        
-        data %{
-          payment_id: "$.payment_id",
-          bank_reference: "$.bank_reference",
-          amount: "$.amount",
-          date: "$.payment_date"
-        }
-        
-        routing ["reconciliation_service"]
-      end
-    end
-    
-    end_event :payment_processed
-    
-    # ============================================
-    # Error Handling
-    # ============================================
-    
-    subprocess :handle_invalid_payment do
-      user_task :investigate_payment do
-        assignee role: "payment_investigator"
-        
-        sla "PT4H"
-        
-        options [
-          "valid_payment_wrong_reference",
-          "duplicate_payment",
-          "fraudulent_payment",
-          "return_payment"
-        ]
-      end
-      
-      exclusive_gateway :investigation_outcome do
-        condition :reprocess, expr: "$.decision == 'valid_payment_wrong_reference'"
-        condition :return_payment, expr: "$.decision == 'return_payment'"
-        condition :flag_fraud, expr: "$.decision == 'fraudulent_payment'"
-      end
-      
-      service_task :initiate_return do
-        incoming :return_payment
-        
-        command AccountEx.Banking.Commands.InitiateReturn
-      end
-      
-      signal_event :fraud_alert do
-        incoming :flag_fraud
-        
-        signal AccountEx.Signals.FraudDetected
-        severity :critical
-      end
-    end
-    
-    compensation_handler :reverse_allocation do
-      command AccountEx.AR.Commands.ReversePaymentAllocation do
-        aggregate_id "$.invoice_id"
-        payment_id "$.payment_id"
       end
     end
   end
 end
-```
 
-## 4. Collections Management Process
-
-```elixir
-defmodule AccountEx.AR.Processes.Collections do
-  @moduledoc """
-  Multi-stage collections process with escalation paths and dispute handling.
-  Compliant with FDCPA and other regulations.
-  """
+defmodule AccountsReceivables.BPMN.DisputeResolution do
+  use AccountsReceivables.BPMN.ProcessBase,
+    name: "dispute_resolution",
+    version: "1.0.0"
   
-  use AccountEx.AccountsReceivables.BPMN.DSL
+  use Jido.BPMN
   
-  process id: :collections_workflow do
-    tenant_aware true
+  process "dispute_resolution" do
+    @doc """
+    Invoice dispute handling and resolution process
+    """
     
-    start_event :invoice_overdue do
-      signal "accountex.ar.invoice_overdue"
+    start_event :dispute_raised do
+      message_ref "invoice.dispute.raised"
       
-      correlation [:invoice_id, :customer_id]
+      output :dispute_data
     end
     
-    # ============================================
-    # Customer Analysis & Strategy Selection
-    # ============================================
-    
-    agent_task :analyze_customer do
-      agent AccountEx.AR.Agents.CollectionsStrategist
-      action :determine_approach
+    # Categorize dispute
+    business_rule_task :categorize_dispute do
+      name "Categorize Dispute Type"
       
-      factors %{
-        customer_value: "$.customer.lifetime_value",
-        payment_history: "$.customer.payment_pattern",
-        current_situation: "$.customer.recent_interactions",
-        communication_prefs: "$.customer.preferences"
+      dmn_table "dispute_categorization"
+      input %{
+        dispute_reason: "{{dispute_data.reason}}",
+        amount: "{{dispute_data.disputed_amount}}",
+        invoice_age: "{{dispute_data.invoice_age}}"
       }
       
-      output %{
-        strategy: :string,
-        risk_level: :string,
-        recommended_actions: :list
-      }
+      output :dispute_category
     end
     
-    exclusive_gateway :strategy_routing do
-      condition :soft, expr: "$.strategy == 'relationship_preservation'"
-      condition :standard, expr: "$.strategy == 'standard_collections'"
-      condition :aggressive, expr: "$.strategy == 'aggressive_recovery'"
-      condition :legal, expr: "$.strategy == 'legal_action'"
-    end
-    
-    # ============================================
-    # Soft Collections Path
-    # ============================================
-    
-    subprocess :soft_collections do
-      incoming :soft
+    # Log dispute
+    service_task :log_dispute do
+      name "Log Dispute"
       
-      agent_task :friendly_reminder do
-        agent AccountEx.AR.Agents.CommunicationsBot
-        action :send_personalized_reminder
-        
-        tone :friendly
-        personalization :high
-        
-        templates %{
-          first_reminder: "gentle_reminder_template",
-          follow_up: "friendly_follow_up_template"
+      agent AccountsReceivables.Agents.DisputeAgent do
+        action :create_dispute_record
+        params %{
+          invoice_id: "{{dispute_data.invoice_id}}",
+          customer_id: "{{dispute_data.customer_id}}",
+          category: "{{dispute_category}}",
+          details: "{{dispute_data.details}}"
         }
       end
       
-      timer_event :wait_period do
-        duration "P7D"
-      end
-      
-      service_task :check_payment do
-        query AccountEx.AR.Queries.CheckPaymentReceived
-        invoice_id "$.invoice_id"
-      end
-      
-      exclusive_gateway :payment_check do
-        condition :paid, expr: "$.payment_received == true"
-        condition :not_paid, expr: "$.payment_received == false"
-      end
-      
-      signal_event :escalate_to_standard do
-        incoming :not_paid
-        
-        signal AccountEx.Signals.EscalateCollections do
-          data %{
-            invoice_id: "$.invoice_id",
-            new_strategy: "standard"
-          }
-        end
-      end
-    end
-    
-    # ============================================
-    # Standard Collections Path
-    # ============================================
-    
-    subprocess :standard_collections do
-      incoming [:standard, :escalate_to_standard]
-      
-      multi_instance :contact_attempts do
-        max_iterations 3
-        
-        parallel_gateway :multi_channel
-        
-        service_task :email_notice do
-          template expr: "select_template($.attempt_number)"
-          urgency expr: "calculate_urgency($.days_overdue)"
-        end
-        
-        service_task :sms_reminder do
-          condition "$.customer.sms_enabled"
-          template :payment_reminder_sms
-        end
-        
-        user_task :phone_call do
-          condition "$.days_overdue > 30"
-          
-          assignee role: "collections_agent"
-          
-          script :collections_call_script
-          
-          disposition_codes [
-            "promise_to_pay",
-            "dispute_raised",
-            "unable_to_pay",
-            "wrong_number",
-            "no_answer",
-            "left_message"
-          ]
-        end
-        
-        parallel_gateway :channel_join
-        
-        timer_event :between_attempts do
-          duration expr: "P#{5 + $.attempt_number * 2}D"
-        end
-        
-        exclusive_gateway :evaluate_response do
-          condition :promise, expr: "$.disposition == 'promise_to_pay'"
-          condition :dispute, expr: "$.disposition == 'dispute_raised'"
-          condition :continue, expr: "$.disposition in ['no_answer', 'left_message']"
-          condition :escalate, expr: "$.attempt_number >= 3"
-        end
-      end
-    end
-    
-    # ============================================
-    # Promise to Pay Tracking
-    # ============================================
-    
-    subprocess :promise_tracking do
-      incoming :promise
-      
-      service_task :record_promise do
-        command AccountEx.AR.Commands.CreatePaymentPromise do
-          payload %{
-            invoice_id: "$.invoice_id",
-            promise_date: "$.promise_date",
-            promise_amount: "$.promise_amount",
-            notes: "$.agent_notes"
-          }
-        end
-      end
-      
-      timer_event :promise_due do
-        date "$.promise_date"
-      end
-      
-      service_task :verify_promise do
-        query AccountEx.AR.Queries.CheckPromiseFulfilled
-      end
-      
-      exclusive_gateway :promise_kept do
-        condition :fulfilled, expr: "$.promise.fulfilled"
-        condition :broken, expr: "not $.promise.fulfilled"
-      end
-      
-      service_task :mark_broken_promise do
-        incoming :broken
-        
-        command AccountEx.AR.Commands.RecordBrokenPromise
-        
-        update_customer_reliability_score true
-      end
-      
-      signal_event :escalate_broken_promise do
-        incoming :broken
-        
-        signal AccountEx.Signals.BrokenPromise
-        severity :high
-      end
-    end
-    
-    # ============================================
-    # Aggressive Collections Path
-    # ============================================
-    
-    subprocess :aggressive_collections do
-      incoming :aggressive
-      
-      service_task :final_demand_letter do
-        template :formal_demand_letter
-        
-        delivery :certified_mail
-        signature_required true
-        
-        include %{
-          legal_language: true,
-          consequences: true,
-          final_deadline: "P10D"
-        }
-      end
-      
-      timer_event :wait_for_response do
-        duration "P10D"
-      end
-      
-      parallel_gateway :aggressive_actions
-      
-      service_task :credit_bureau_reporting do
-        condition "$.days_overdue > 90"
-        
-        bureaus [:experian, :equifax, :transunion]
-        
-        compliance_check :ensure_fdcpa_compliance
-      end
-      
-      service_task :suspend_services do
-        condition "$.customer.has_active_services"
-        
-        command AccountEx.Services.Commands.SuspendCustomer
-        
-        requires_approval role: "service_manager"
-      end
-      
-      signal_event :notify_sales_team do
-        signal AccountEx.Signals.CustomerAtRisk
-        
+      emit_event do
+        type "dispute.created"
         data %{
-          customer_id: "$.customer_id",
-          risk_level: :high,
-          recommended_action: "no_new_orders"
+          dispute_id: "{{dispute_record.id}}",
+          invoice_id: "{{dispute_data.invoice_id}}"
         }
       end
       
-      parallel_gateway :aggressive_join
+      output :dispute_record
+    end
+    
+    # Put invoice on hold
+    service_task :hold_invoice do
+      name "Place Invoice on Hold"
       
-      user_task :final_attempt do
-        assignee role: "senior_collector"
-        
-        escalation after: "PT48H", to: "collections_manager"
-        
-        options [
-          "payment_received",
-          "payment_plan_negotiated",
-          "send_to_legal",
-          "write_off"
-        ]
+      agent AccountsReceivables.Agents.InvoiceAgent do
+        action :place_on_hold
+        params %{
+          invoice_id: "{{dispute_data.invoice_id}}",
+          reason: "dispute",
+          dispute_id: "{{dispute_record.id}}"
+        }
       end
     end
     
-    # ============================================
-    # Legal Action Path
-    # ============================================
+    # Route based on dispute type
+    exclusive_gateway :dispute_routing do
+      name "Route by Dispute Type"
+      
+      flow :pricing_dispute do
+        condition "{{dispute_category.type}} == 'pricing'"
+        target :investigate_pricing
+      end
+      
+      flow :quality_dispute do
+        condition "{{dispute_category.type}} == 'quality'"
+        target :investigate_quality
+      end
+      
+      flow :delivery_dispute do
+        condition "{{dispute_category.type}} == 'delivery'"
+        target :investigate_delivery
+      end
+      
+      flow :billing_error do
+        condition "{{dispute_category.type}} == 'billing_error'"
+        target :investigate_billing
+      end
+      
+      default :general_investigation
+    end
     
-    subprocess :legal_proceedings do
-      incoming :legal
+    # Pricing investigation
+    sub_process :investigate_pricing do
+      name "Pricing Dispute Investigation"
       
-      user_task :legal_review do
-        assignee role: "legal_team"
-        
-        required_documents [
-          "invoice_history",
-          "payment_history",
-          "communication_log",
-          "signed_agreements"
-        ]
-        
-        checklist [
-          "amount_justifies_action",
-          "documentation_complete",
-          "statute_limitations_ok",
-          "customer_solvency_verified"
-        ]
+      start_event :pricing_start
+      
+      parallel_gateway :gather_pricing_data do
+        flow :get_contract
+        flow :get_quote
+        flow :get_order
       end
       
-      exclusive_gateway :legal_decision do
-        condition :proceed, expr: "$.legal_review.recommendation == 'proceed'"
-        condition :settle, expr: "$.legal_review.recommendation == 'negotiate'"
-        condition :write_off, expr: "$.legal_review.recommendation == 'write_off'"
+      service_task :get_contract do
+        name "Retrieve Contract Terms"
+        
+        agent AccountsReceivables.Agents.ContractAgent do
+          action :get_pricing_terms
+          params %{customer_id: "{{dispute_data.customer_id}}"}
+        end
+        
+        output :contract_terms
       end
       
-      service_task :file_legal_claim do
-        incoming :proceed
+      service_task :get_quote do
+        name "Retrieve Quote"
         
-        external_system :legal_case_management
+        agent Sales.Agents.QuoteAgent do
+          action :get_quote
+          params %{order_id: "{{dispute_data.order_id}}"}
+        end
         
-        create_case %{
-          type: "debt_collection",
-          amount: "$.invoice.total_amount",
-          documentation: "$.legal_documents"
-        }
+        output :quote_data
       end
       
-      user_task :settlement_negotiation do
-        incoming :settle
+      service_task :get_order do
+        name "Retrieve Order"
         
-        assignee role: "settlement_specialist"
+        agent Sales.Agents.OrderAgent do
+          action :get_order_details
+          params %{order_id: "{{dispute_data.order_id}}"}
+        end
         
-        minimum_acceptable "$.invoice.balance * 0.6"
-        
-        authority_matrix %{
-          "0.9": "collector",
-          "0.7": "manager",
-          "0.6": "director"
-        }
+        output :order_data
       end
       
-      service_task :write_off_debt do
-        incoming :write_off
+      parallel_gateway :pricing_data_complete do
+        converge true
+      end
+      
+      service_task :analyze_pricing do
+        name "AI Pricing Analysis"
         
-        command AccountEx.AR.Commands.WriteOffInvoice do
-          approval_required true
+        agent AccountsReceivables.Agents.AIPricingAgent do
+          action :analyze_pricing_dispute
+          params %{
+            contract: "{{contract_terms}}",
+            quote: "{{quote_data}}",
+            order: "{{order_data}}",
+            invoice: "{{dispute_data.invoice_data}}",
+            dispute_claim: "{{dispute_data.customer_claim}}"
+          }
           
-          approval_matrix %{
-            under_1000: "supervisor",
-            under_10000: "manager",
-            under_50000: "director",
-            over_50000: "cfo"
+          ai_enabled true
+        end
+        
+        output :pricing_analysis
+      end
+      
+      end_event :pricing_investigated
+    end
+    
+    # Quality investigation
+    sub_process :investigate_quality do
+      name "Quality Dispute Investigation"
+      
+      start_event :quality_start
+      
+      service_task :get_quality_records do
+        name "Retrieve Quality Records"
+        
+        agent Quality.Agents.QualityAgent do
+          action :get_quality_reports
+          params %{
+            order_id: "{{dispute_data.order_id}}",
+            product_ids: "{{dispute_data.product_ids}}"
           }
         end
         
-        update_gl true
-        report_to_tax_authorities true
+        output :quality_records
       end
+      
+      user_task :quality_review do
+        name "Quality Team Review"
+        assignee role: "quality_inspector"
+        
+        form do
+          field :quality_issue_confirmed, :boolean
+          field :issue_severity, :enum, options: [:minor, :major, :critical]
+          field :recommended_action, :enum, options: [:credit, :replacement, :reject]
+          field :evidence, :attachments
+        end
+        
+        output :quality_decision
+      end
+      
+      end_event :quality_investigated
     end
     
-    # ============================================
-    # Dispute Resolution
-    # ============================================
-    
-    subprocess :dispute_resolution do
-      incoming :dispute
+    # Delivery investigation
+    sub_process :investigate_delivery do
+      name "Delivery Dispute Investigation"
       
-      user_task :investigate_dispute do
-        assignee role: "dispute_analyst"
+      start_event :delivery_start
+      
+      service_task :get_shipping_records do
+        name "Get Shipping Records"
         
-        sla "PT24H"
+        agent Logistics.Agents.ShippingAgent do
+          action :get_delivery_proof
+          params %{
+            order_id: "{{dispute_data.order_id}}",
+            tracking_numbers: "{{dispute_data.tracking_numbers}}"
+          }
+        end
         
-        investigation_tools [
-          :order_history,
-          :delivery_tracking,
-          :communication_logs,
-          :contract_terms
-        ]
+        output :shipping_records
       end
       
-      exclusive_gateway :dispute_validity do
-        condition :valid, expr: "$.investigation.finding == 'valid'"
-        condition :invalid, expr: "$.investigation.finding == 'invalid'"
-        condition :partial, expr: "$.investigation.finding == 'partial'"
+      service_task :verify_delivery do
+        name "Verify Delivery Status"
+        
+        agent AccountsReceivables.Agents.DeliveryVerificationAgent do
+          action :verify_delivery_claim
+          params %{
+            shipping_records: "{{shipping_records}}",
+            customer_claim: "{{dispute_data.delivery_claim}}"
+          }
+        end
+        
+        output :delivery_verification
+      end
+      
+      end_event :delivery_investigated
+    end
+    
+    # Billing error investigation
+    service_task :investigate_billing do
+      name "Investigate Billing Error"
+      
+      agent AccountsReceivables.Agents.BillingAuditAgent do
+        action :audit_invoice
+        params %{
+          invoice_id: "{{dispute_data.invoice_id}}",
+          claimed_errors: "{{dispute_data.billing_errors}}"
+        }
+      end
+      
+      output :billing_audit
+    end
+    
+    # General investigation
+    user_task :general_investigation do
+      name "General Dispute Investigation"
+      assignee role: "dispute_specialist"
+      
+      form do
+        field :investigation_findings, :text
+        field :supporting_documents, :attachments
+        field :recommended_resolution, :text
+        field :adjustment_amount, :decimal
+      end
+      
+      sla "P2D"
+      
+      output :investigation_result
+    end
+    
+    # Consolidate investigation results
+    service_task :consolidate_findings do
+      name "Consolidate Investigation"
+      
+      agent AccountsReceivables.Agents.DisputeAgent do
+        action :consolidate_investigation
+        params %{
+          dispute_id: "{{dispute_record.id}}",
+          investigation_results: "{{investigation_outputs}}"
+        }
+      end
+      
+      output :consolidated_findings
+    end
+    
+    # AI resolution recommendation
+    service_task :ai_resolution do
+      name "AI Resolution Recommendation"
+      
+      agent AccountsReceivables.Agents.AIDisputeAgent do
+        action :recommend_resolution
+        params %{
+          dispute: "{{dispute_record}}",
+          findings: "{{consolidated_findings}}",
+          customer_history: "{{dispute_data.customer_history}}",
+          similar_disputes: "{{dispute_data.similar_cases}}"
+        }
+        
+        ai_enabled true
+        model "dispute-resolution-v2"
+      end
+      
+      output :ai_recommendation
+    end
+    
+    # Resolution decision
+    exclusive_gateway :resolution_decision do
+      name "Resolution Decision"
+      
+      flow :auto_approve do
+        condition "{{ai_recommendation.confidence}} >= 0.95 && {{ai_recommendation.adjustment}} <= {{dispute_category.auto_approval_limit}}"
+        target :implement_resolution
+      end
+      
+      flow :manager_approval do
+        condition "{{ai_recommendation.adjustment}} > {{dispute_category.auto_approval_limit}}"
+        target :manager_review
+      end
+      
+      default :implement_resolution
+    end
+    
+    # Manager review
+    user_task :manager_review do
+      name "Manager Approval"
+      assignee role: "ar_manager"
+      
+      form do
+        field :approve, :boolean
+        field :approved_adjustment, :decimal
+        field :resolution_notes, :text
+      end
+      
+      escalation do
+        after "PT4H"
+        to role: "finance_director"
+      end
+      
+      output :manager_decision
+    end
+    
+    # Implement resolution
+    sub_process :implement_resolution do
+      name "Implement Resolution"
+      
+      start_event :resolution_start
+      
+      exclusive_gateway :resolution_type do
+        flow :credit_note do
+          condition "{{resolution.type}} == 'credit'"
+          target :issue_credit_note
+        end
+        
+        flow :invoice_adjustment do
+          condition "{{resolution.type}} == 'adjustment'"
+          target :adjust_invoice
+        end
+        
+        flow :reject_dispute do
+          condition "{{resolution.type}} == 'reject'"
+          target :reject_dispute_task
+        end
+      end
+      
+      service_task :issue_credit_note do
+        name "Issue Credit Note"
+        
+        agent AccountsReceivables.Agents.CreditNoteAgent do
+          action :create_credit_note
+          params %{
+            invoice_id: "{{dispute_data.invoice_id}}",
+            amount: "{{resolution.credit_amount}}",
+            reason: "{{resolution.reason}}",
+            dispute_id: "{{dispute_record.id}}"
+          }
+        end
+        
+        output :credit_note
       end
       
       service_task :adjust_invoice do
-        incoming [:valid, :partial]
+        name "Adjust Invoice"
         
-        command AccountEx.AR.Commands.AdjustInvoice do
-          adjustment_amount expr: "$.dispute.valid_amount"
-          reason "$.dispute.reason"
+        agent AccountsReceivables.Agents.InvoiceAgent do
+          action :adjust_invoice
+          params %{
+            invoice_id: "{{dispute_data.invoice_id}}",
+            adjustments: "{{resolution.adjustments}}",
+            dispute_id: "{{dispute_record.id}}"
+          }
+        end
+        
+        output :adjusted_invoice
+      end
+      
+      service_task :reject_dispute_task do
+        name "Reject Dispute"
+        
+        agent AccountsReceivables.Agents.DisputeAgent do
+          action :reject_dispute
+          params %{
+            dispute_id: "{{dispute_record.id}}",
+            rejection_reason: "{{resolution.rejection_reason}}",
+            supporting_evidence: "{{consolidated_findings}}"
+          }
         end
       end
       
-      service_task :issue_credit do
-        incoming :valid
-        condition "$.invoice.status == 'paid'"
-        
-        command AccountEx.AR.Commands.IssueCreditMemo
-      end
+      end_event :resolution_implemented
+    end
+    
+    # Release invoice hold
+    service_task :release_hold do
+      name "Release Invoice Hold"
       
-      signal_event :resume_collections do
-        incoming :invalid
-        
-        signal AccountEx.Signals.ResumeCollections
+      agent AccountsReceivables.Agents.InvoiceAgent do
+        action :release_hold
+        params %{
+          invoice_id: "{{dispute_data.invoice_id}}",
+          dispute_id: "{{dispute_record.id}}"
+        }
       end
     end
     
-    # ============================================
-    # Compliance & Monitoring
-    # ============================================
-    
-    subprocess :compliance_monitoring do
-      parallel_to :main_process
+    # Update dispute record
+    service_task :close_dispute do
+      name "Close Dispute"
       
-      service_task :fdcpa_compliance do
-        continuous true
-        
-        rules [
-          {max_calls_per_day: 3},
-          {no_calls_before: "8:00"},
-          {no_calls_after: "21:00"},
-          {respect_cease_desist: true},
-          {validate_debt_on_request: true}
-        ]
+      agent AccountsReceivables.Agents.DisputeAgent do
+        action :close_dispute
+        params %{
+          dispute_id: "{{dispute_record.id}}",
+          resolution: "{{resolution}}",
+          closed_by: "{{process_instance_id}}"
+        }
       end
+    end
+    
+    # Notify customer
+    send_task :notify_customer do
+      name "Notify Customer of Resolution"
       
-      service_task :log_all_contacts do
-        every :collection_activity
-        
-        log %{
-          timestamp: now(),
-          type: "$.activity_type",
-          agent: "$.agent_id",
-          outcome: "$.outcome",
-          notes: "$.notes"
+      signal do
+        type "dispute.resolved"
+        source "/accounts_receivables/dispute_resolution"
+        data %{
+          dispute_id: "{{dispute_record.id}}",
+          invoice_id: "{{dispute_data.invoice_id}}",
+          resolution: "{{resolution}}",
+          credit_note: "{{credit_note.number}}"
         }
         
-        immutable true
-        retention "P7Y"
+        dispatch do
+          email to: "{{dispute_data.customer_email}}"
+          pubsub topic: "dispute_resolutions"
+        end
       end
     end
     
-    end_event :collections_complete
+    end_event :dispute_resolved
   end
 end
-```
 
-## 5. Dunning Process Implementation
-
-```elixir
-defmodule AccountEx.AR.Processes.Dunning do
-  @moduledoc """
-  Automated dunning process with multi-level escalation.
-  Configurable by customer segment and region.
-  """
+defmodule AccountsReceivables.BPMN.MonthEndClose do
+  use AccountsReceivables.BPMN.ProcessBase,
+    name: "month_end_close",
+    version: "1.0.0"
   
-  use AccountEx.AccountsReceivables.BPMN.DSL
+  use Jido.BPMN
   
-  process id: :dunning_process do
-    tenant_aware true
+  process "month_end_close" do
+    @doc """
+    Month-end closing process for Accounts Receivables
+    """
     
-    timer_start_event :daily_run do
-      schedule "0 6 * * *"  # Daily at 6 AM
+    start_event :month_end_trigger do
+      timer_event do
+        time_cycle "R/P1M/01T00:00:00"  # First day of each month at midnight
+      end
+      
+      output :close_context
     end
     
-    # ============================================
-    # Identify Dunning Candidates
-    # ============================================
-    
-    service_task :get_dunning_candidates do
-      query AccountEx.AR.Queries.DunningCandidates do
-        filters %{
-          exclude_disputed: true,
-          exclude_promised: true,
-          minimum_amount: 100,
-          minimum_days_overdue: 1
+    # Initialize close process
+    service_task :initialize_close do
+      name "Initialize Month-End Close"
+      
+      agent AccountsReceivables.Agents.CloseAgent do
+        action :initialize_period_close
+        params %{
+          period: "{{close_context.period}}",
+          cutoff_date: "{{close_context.cutoff_date}}"
         }
+      end
+      
+      output :close_params
+    end
+    
+    # Parallel processing of close tasks
+    parallel_gateway :close_tasks_start do
+      name "Start Close Tasks"
+      
+      flow :validate_transactions
+      flow :age_receivables
+      flow :calculate_provisions
+      flow :reconcile_subledger
+      flow :generate_accruals
+    end
+    
+    # Validate all transactions
+    service_task :validate_transactions do
+      name "Validate Period Transactions"
+      
+      agent AccountsReceivables.Agents.ValidationAgent do
+        action :validate_period_transactions
+        params %{
+          period: "{{close_params.period}}",
+          validation_rules: "{{close_params.validation_rules}}"
+        }
+      end
+      
+      boundary_event :validation_errors do
+        error_ref "ValidationException"
+        
+        flow_to :handle_validation_errors
+      end
+      
+      output :validation_results
+    end
+    
+    # Age receivables
+    service_task :age_receivables do
+      name "Age Receivables"
+      
+      agent AccountsReceivables.Agents.AgingAgent do
+        action :calculate_aging_buckets
+        params %{
+          as_of_date: "{{close_params.cutoff_date}}",
+          aging_buckets: [30, 60, 90, 120, "120+"]
+        }
+      end
+      
+      output :aging_analysis
+    end
+    
+    # Calculate bad debt provision
+    service_task :calculate_provisions do
+      name "Calculate Bad Debt Provision"
+      
+      agent AccountsReceivables.Agents.AIProvisionAgent do
+        action :calculate_expected_credit_loss
+        params %{
+          aging_data: "{{aging_analysis}}",
+          historical_loss_rates: "{{close_params.loss_history}}",
+          economic_factors: "{{close_params.economic_indicators}}",
+          customer_risk_profiles: "{{close_params.risk_profiles}}"
+        }
+        
+        ai_enabled true
+        model "ecl-model-v3"
+      end
+      
+      output :provision_calculation
+    end
+    
+    # Reconcile AR subledger to GL
+    service_task :reconcile_subledger do
+      name "Reconcile to General Ledger"
+      
+      agent AccountsReceivables.Agents.ReconciliationAgent do
+        action :reconcile_ar_to_gl
+        params %{
+          period: "{{close_params.period}}",
+          ar_balance: "{{close_params.ar_total}}",
+          gl_accounts: "{{close_params.gl_mapping}}"
+        }
+      end
+      
+      output :reconciliation_result
+    end
+    
+    # Generate accruals
+    service_task :generate_accruals do
+      name "Generate Accruals"
+      
+      agent AccountsReceivables.Agents.AccrualAgent do
+        action :calculate_period_accruals
+        params %{
+          period: "{{close_params.period}}",
+          unbilled_revenue: "{{close_params.unbilled_items}}",
+          deferred_revenue: "{{close_params.deferred_items}}"
+        }
+      end
+      
+      output :accrual_entries
+    end
+    
+    # Handle validation errors
+    user_task :handle_validation_errors do
+      name "Review Validation Errors"
+      assignee role: "ar_supervisor"
+      
+      form do
+        field :error_resolutions, :array
+        field :override_approval, :boolean
+        field :notes, :text
+      end
+      
+      output :error_resolution
+    end
+    
+    # Converge parallel tasks
+    parallel_gateway :close_tasks_complete do
+      converge true
+    end
+    
+    # Review provisions
+    exclusive_gateway :provision_review do
+      name "Provision Review Required?"
+      
+      flow :auto_approve do
+        condition "{{provision_calculation.variance}} <= 0.05"
+        target :post_adjustments
+      end
+      
+      flow :manual_review do
+        condition "{{provision_calculation.variance}} > 0.05"
+        target :review_provisions
       end
     end
     
-    multi_instance :process_customer do
-      collection "$.candidates"
-      execution_mode :parallel
-      max_concurrency 50
+    # Manual provision review
+    user_task :review_provisions do
+      name "Review Bad Debt Provisions"
+      assignee role: "controller"
       
-      # ============================================
-      # Determine Dunning Level
-      # ============================================
+      form do
+        field :approved_provision, :decimal
+        field :adjustment_reason, :text
+        field :supporting_analysis, :attachment
+      end
       
-      service_task :calculate_dunning_level do
-        factors %{
-          days_overdue: "$.invoice.days_overdue",
-          previous_dunning: "$.customer.dunning_history",
-          customer_segment: "$.customer.segment",
-          amount_overdue: "$.invoice.amount"
+      sla "PT4H"
+      
+      output :provision_approval
+    end
+    
+    # Post adjusting entries
+    service_task :post_adjustments do
+      name "Post Adjusting Entries"
+      
+      agent GeneralLedger.Agents.JournalAgent do
+        action :post_journal_entries
+        params %{
+          entries: [
+            "{{provision_calculation.journal_entry}}",
+            "{{accrual_entries}}",
+            "{{reconciliation_result.adjustments}}"
+          ],
+          period: "{{close_params.period}}",
+          source: "ar_month_end"
         }
-        
-        levels [
-          {1, :reminder, days: 1..14},
-          {2, :first_notice, days: 15..30},
-          {3, :second_notice, days: 31..45},
-          {4, :final_notice, days: 46..60},
-          {5, :pre_legal, days: 61..90}
-        ]
       end
       
-      exclusive_gateway :level_routing do
-        condition :level_1, expr: "$.dunning_level == 1"
-        condition :level_2, expr: "$.dunning_level == 2"
-        condition :level_3, expr: "$.dunning_level == 3"
-        condition :level_4, expr: "$.dunning_level == 4"
-        condition :level_5, expr: "$.dunning_level == 5"
-      end
+      output :posted_entries
+    end
+    
+    # Calculate KPIs
+    service_task :calculate_kpis do
+      name "Calculate AR KPIs"
       
-      # ============================================
-      # Level 1: Friendly Reminder
-      # ============================================
-      
-      subprocess :level_1_reminder do
-        incoming :level_1
-        
-        agent_task :compose_reminder do
-          agent AccountEx.AR.Agents.DunningComposer
-          action :create_friendly_reminder
-          
-          tone :friendly
-          personalization :high
-          
-          variables %{
-            customer_name: "$.customer.name",
-            invoice_number: "$.invoice.number",
-            amount_due: "$.invoice.amount",
-            days_overdue: "$.invoice.days_overdue"
-          }
-        end
-        
-        service_task :send_reminder do
-          channels [:email]
-          
-          track %{
-            opens: true,
-            clicks: true,
-            replies: true
-          }
-        end
-      end
-      
-      # ============================================
-      # Level 2: First Notice
-      # ============================================
-      
-      subprocess :level_2_notice do
-        incoming :level_2
-        
-        service_task :calculate_late_fees do
-          rate "$.customer.contract.late_fee_rate"
-          minimum 25.00
-        end
-        
-        service_task :generate_statement do
-          include %{
-            current_invoice: true,
-            late_fees: true,
-            payment_history: true,
-            aging_summary: true
-          }
-        end
-        
-        parallel_gateway :delivery_channels
-        
-        service_task :email_notice do
-          template :first_dunning_notice
-          priority :high
-          read_receipt true
-        end
-        
-        service_task :portal_notification do
-          prominent true
-          requires_acknowledgment true
-        end
-        
-        parallel_gateway :delivery_join
-      end
-      
-      # ============================================
-      # Level 3: Second Notice with Call
-      # ============================================
-      
-      subprocess :level_3_notice do
-        incoming :level_3
-        
-        service_task :generate_urgent_notice do
-          template :second_dunning_notice
-          
-          urgency :high
-          
-          highlight %{
-            consequences: true,
-            credit_impact: true,
-            service_suspension: true
-          }
-        end
-        
-        agent_task :automated_call do
-          agent AccountEx.AR.Agents.VoiceCaller
-          action :place_reminder_call
-          
-          provider :twilio
-          
-          script :payment_reminder_ivr
-          
-          options %{
-            "1": "promise_to_pay",
-            "2": "speak_to_agent",
-            "3": "dispute_amount"
-          }
-        end
-        
-        conditional_event :schedule_follow_up do
-          condition "$.customer.value_segment == 'high'"
-          
-          user_task :personal_follow_up do
-            assignee "$.customer.account_manager"
-            script :relationship_preservation_script
-          end
-        end
-      end
-      
-      # ============================================
-      # Level 4: Final Notice
-      # ============================================
-      
-      subprocess :level_4_final do
-        incoming :level_4
-        
-        service_task :prepare_final_notice do
-          template :final_dunning_notice
-          
-          legal_language true
-          
-          deadlines %{
-            payment: "P10D",
-            response: "P7D"
-          }
-          
-          consequences %{
-            credit_reporting: true,
-            legal_action: true,
-            service_termination: true
-          }
-        end
-        
-        service_task :send_certified do
-          method :certified_mail
-          return_receipt true
-          electronic_delivery true
-        end
-        
-        signal_event :alert_management do
-          signal AccountEx.Signals.CustomerCritical
-          
-          data %{
-            customer_id: "$.customer_id",
-            at_risk_amount: "$.total_outstanding",
-            recommended_actions: ["personal_intervention", "payment_plan"]
-          }
-        end
-      end
-      
-      # ============================================
-      # Level 5: Pre-Legal
-      # ============================================
-      
-      subprocess :level_5_prelegal do
-        incoming :level_5
-        
-        service_task :compile_documentation do
-          documents %{
-            invoices: "$.all_outstanding_invoices",
-            dunning_history: "$.dunning_log",
-            communications: "$.communication_history",
-            contracts: "$.customer.agreements"
-          }
-          
-          format :legal_package
-        end
-        
-        user_task :final_review do
-          assignee role: "collections_manager"
-          
-          options [
-            "proceed_to_legal",
-            "offer_settlement",
-            "payment_plan",
-            "write_off"
+      agent AccountsReceivables.Agents.KPIAgent do
+        action :calculate_period_metrics
+        params %{
+          period: "{{close_params.period}}",
+          metrics: [
+            "days_sales_outstanding",
+            "collection_effectiveness_index", 
+            "average_days_delinquent",
+            "bad_debt_ratio",
+            "invoice_accuracy_rate"
           ]
-          
-          require_justification true
-        end
-        
-        exclusive_gateway :final_decision do
-          condition :legal, expr: "$.decision == 'proceed_to_legal'"
-          condition :settlement, expr: "$.decision == 'offer_settlement'"
-          condition :payment_plan, expr: "$.decision == 'payment_plan'"
-          condition :write_off, expr: "$.decision == 'write_off'"
-        end
-        
-        call_activity :initiate_legal do
-          incoming :legal
-          called_process AccountEx.AR.Processes.Collections
-          start_at :legal_proceedings
-        end
-      end
-      
-      # ============================================
-      # Record Dunning Activity
-      # ============================================
-      
-      service_task :log_dunning do
-        command AccountEx.AR.Commands.RecordDunningActivity do
-          payload %{
-            customer_id: "$.customer_id",
-            invoice_id: "$.invoice_id",
-            dunning_level: "$.dunning_level",
-            action_taken: "$.action",
-            response: "$.customer_response",
-            next_action_date: "$.next_dunning_date"
-          }
-        end
-      end
-      
-      service_task :update_customer_status do
-        command AccountEx.AR.Commands.UpdateDunningStatus do
-          aggregate_id "$.customer_id"
-          
-          status expr: "map_dunning_to_status($.dunning_level)"
-          
-          block_new_orders "$.dunning_level >= 3"
-        end
-      end
-    end
-    
-    # ============================================
-    # Compliance Validation
-    # ============================================
-    
-    service_task :validate_compliance do
-      rules %{
-        max_contacts_week: 3,
-        quiet_hours: ["22:00", "08:00"],
-        cooling_period: "P7D",
-        exclude_lists: ["do_not_contact", "bankruptcy", "deceased"]
-      }
-      
-      gdpr_compliant true
-      ccpa_compliant true
-    end
-    
-    end_event :dunning_complete
-  end
-end
-```
-
-## 6. Integration Points Module
-
-```elixir
-defmodule AccountEx.AR.Processes.Integrations do
-  @moduledoc """
-  Handles integration with other AccountEx modules and external systems.
-  Implements resilient communication patterns for module unavailability.
-  """
-  
-  use AccountEx.AccountsReceivables.BPMN.DSL
-  
-  process id: :module_integrations do
-    
-    # ============================================
-    # General Ledger Integration
-    # ============================================
-    
-    subprocess :gl_integration do
-      signal_start_event :ar_transaction do
-        signal_types [
-          "InvoiceIssued",
-          "PaymentReceived",
-          "CreditMemoIssued",
-          "WriteOffApproved",
-          "AdjustmentPosted"
-        ]
-      end
-      
-      service_task :map_to_journal_entry do
-        mappings %{
-          "InvoiceIssued" => {
-            debit: "120000",  # AR Control
-            credit: "400000"  # Revenue
-          },
-          "PaymentReceived" => {
-            debit: "100000",  # Cash
-            credit: "120000"  # AR Control
-          },
-          "CreditMemoIssued" => {
-            debit: "400000",  # Revenue
-            credit: "120000"  # AR Control
-          },
-          "WriteOffApproved" => {
-            debit: "630000",  # Bad Debt Expense
-            credit: "120000"  # AR Control
-          }
         }
       end
       
-      service_task :post_to_gl do
-        resilient_call AccountEx.GeneralLedger.PostJournalEntry do
-          retry_policy %{
-            max_attempts: 5,
-            backoff: :exponential,
-            initial_delay: 1000
-          }
-          
-          fallback :queue_for_batch_posting
-        end
-        
-        idempotent true
-        idempotency_key "ar_#{$.transaction_id}"
-      end
-      
-      boundary_event :gl_unavailable do
-        error_type :module_unavailable
-        
-        compensate false  # Don't rollback AR transaction
-        
-        signal AccountEx.Signals.IntegrationFailure do
-          severity :high
-          module :general_ledger
-          retry_after "PT5M"
-        end
-      end
+      output :kpi_results
     end
     
-    # ============================================
-    # Sales Order Integration
-    # ============================================
-    
-    subprocess :sales_integration do
-      message_start_event :order_ready do
-        message "SalesOrderReadyForInvoicing"
-        correlation [:order_id, :customer_id]
-      end
+    # Generate reports
+    parallel_gateway :report_generation_start do
+      name "Generate Reports"
       
-      service_task :validate_order do
-        checks %{
-          customer_exists: "customer_active($.customer_id)",
-          credit_approved: "credit_check_passed($.customer_id, $.order_total)",
-          billing_complete: "billing_address_valid($.billing_address)"
+      flow :aging_report
+      flow :reconciliation_report
+      flow :kpi_dashboard
+      flow :exception_report
+    end
+    
+    service_task :aging_report do
+      name "Generate Aging Report"
+      
+      agent AccountsReceivables.Agents.ReportAgent do
+        action :generate_aging_report
+        params %{
+          aging_data: "{{aging_analysis}}",
+          period: "{{close_params.period}}"
         }
       end
       
-      exclusive_gateway :order_type do
-        condition :standard, expr: "$.order.type == 'standard'"
-        condition :subscription, expr: "$.order.type == 'subscription'"
-        condition :milestone, expr: "$.order.type == 'milestone'"
+      output :aging_report_file
+    end
+    
+    service_task :reconciliation_report do
+      name "Generate Reconciliation Report"
+      
+      agent AccountsReceivables.Agents.ReportAgent do
+        action :generate_reconciliation_report
+        params %{
+          reconciliation: "{{reconciliation_result}}",
+          adjustments: "{{posted_entries}}"
+        }
       end
       
-      call_activity :create_standard_invoice do
-        incoming :standard
-        called_process :invoice_lifecycle
+      output :recon_report_file
+    end
+    
+    service_task :kpi_dashboard do
+      name "Generate KPI Dashboard"
+      
+      agent AccountsReceivables.Agents.DashboardAgent do
+        action :generate_executive_dashboard
+        params %{
+          kpis: "{{kpi_results}}",
+          trends: "{{close_params.historical_trends}}",
+          projections: "{{close_params.forecasts}}"
+        }
       end
       
-      subprocess :subscription_invoicing do
-        incoming :subscription
-        
-        service_task :calculate_period do
-          billing_cycle "$.subscription.billing_cycle"
-          proration_rules "$.subscription.proration"
-        end
-        
-        timer_event :recurring_invoice do
-          cycle expr: "subscription_schedule($.subscription)"
-        end
-        
-        call_activity :create_subscription_invoice do
-          called_process :invoice_lifecycle
-          
-          modifications %{
-            auto_charge: true,
-            payment_method: "$.subscription.payment_method"
-          }
-        end
+      output :dashboard_file
+    end
+    
+    service_task :exception_report do
+      name "Generate Exception Report"
+      
+      agent AccountsReceivables.Agents.ReportAgent do
+        action :generate_exception_report
+        params %{
+          validation_errors: "{{validation_results.errors}}",
+          reconciliation_breaks: "{{reconciliation_result.breaks}}",
+          high_risk_accounts: "{{aging_analysis.high_risk}}"
+        }
       end
       
-      signal_event :notify_sales do
-        signal AccountEx.Signals.InvoiceCreatedFromOrder do
-          data %{
-            order_id: "$.order_id",
-            invoice_id: "$.invoice_id",
-            invoice_number: "$.invoice_number"
-          }
+      output :exception_report_file
+    end
+    
+    parallel_gateway :report_generation_complete do
+      converge true
+    end
+    
+    # Final review and sign-off
+    user_task :close_review do
+      name "Month-End Close Review"
+      assignee role: "cfo"
+      
+      form do
+        field :review_status, :enum, options: [:approved, :rejected, :conditional]
+        field :comments, :text
+        field :sign_off, :boolean
+      end
+      
+      sla "P1D"
+      
+      output :close_approval
+    end
+    
+    # Lock period
+    service_task :lock_period do
+      name "Lock Accounting Period"
+      condition "{{close_approval.sign_off}} == true"
+      
+      agent AccountsReceivables.Agents.PeriodAgent do
+        action :lock_period
+        params %{
+          period: "{{close_params.period}}",
+          locked_by: "{{close_approval.approver}}",
+          locked_at: "{{close_approval.timestamp}}"
+        }
+      end
+    end
+    
+    # Distribute reports
+    send_task :distribute_reports do
+      name "Distribute Close Reports"
+      
+      signal do
+        type "month_end.complete"
+        source "/accounts_receivables/month_end_close"
+        data %{
+          period: "{{close_params.period}}",
+          reports: [
+            "{{aging_report_file}}",
+            "{{recon_report_file}}",
+            "{{dashboard_file}}",
+            "{{exception_report_file}}"
+          ],
+          kpis: "{{kpi_results}}"
+        }
+        
+        dispatch do
+          email to: "{{close_params.distribution_list}}"
+          pubsub topic: "month_end_complete"
+          storage path: "/reports/ar/{{close_params.period}}"
         end
       end
     end
     
-    # ============================================
-    # Banking Integration
-    # ============================================
-    
-    subprocess :banking_integration do
-      parallel_gateway :bank_channels
-      
-      # Bank statement import
-      service_task :import_bank_statements do
-        providers [
-          {name: :bank_api, priority: 1},
-          {name: :file_import, priority: 2},
-          {name: :manual_entry, priority: 3}
-        ]
-        
-        formats ["MT940", "BAI2", "OFX", "CSV"]
-        
-        schedule "0 8,14,20 * * *"  # 3 times daily
-      end
-      
-      # Payment gateway notifications
-      receive_task :payment_gateway_webhook do
-        providers [:stripe, :paypal, :square]
-        
-        verify_signature true
-        
-        deduplicate_window "PT24H"
-      end
-      
-      # ACH processing
-      service_task :process_ach_batch do
-        schedule "0 16 * * 1-5"  # 4 PM weekdays
-        
-        nacha_compliant true
-        
-        same_day_cutoff "14:00"
-      end
-      
-      parallel_gateway :bank_join
-      
-      signal_event :payment_detected do
-        signal AccountEx.Signals.PaymentDetected do
-          routing ["payment_processing", "reconciliation"]
-        end
-      end
-    end
-    
-    # ============================================
-    # External Credit Services
-    # ============================================
-    
-    subprocess :credit_services do
-      timer_start_event :credit_update do
-        cycle "R/P1M"  # Monthly
-      end
-      
-      multi_instance :credit_bureaus do
-        collection ["experian", "equifax", "transunion"]
-        
-        service_task :pull_credit_report do
-          resilient_call AccountEx.External.CreditBureau do
-            timeout 30_000
-            
-            cache_on_failure true
-            cache_ttl "P7D"
-            
-            circuit_breaker %{
-              threshold: 5,
-              timeout: 60_000
-            }
-          end
-        end
-        
-        service_task :update_customer_score do
-          command AccountEx.AR.Commands.UpdateCreditScore do
-            weighted_average true
-            
-            weights %{
-              experian: 0.35,
-              equifax: 0.35,
-              transunion: 0.30
-            }
-          end
-        end
-      end
+    end_event :close_complete do
+      name "Month-End Close Complete"
     end
   end
 end
-```
-
-This complete BPMN DSL implementation for Accounts Receivables provides:
-
-1. **Full Event Sourcing Integration** - All processes work with Commanded aggregates and events
-2. **Resilient Module Communication** - Handles unavailable modules gracefully
-3. **Comprehensive Business Logic** - Covers all AR workflows from invoice to collection
-4. **Agent-Based Automation** - Jido agents handle intelligent tasks
-5. **Compliance Built-In** - FDCPA, GDPR, and other regulations enforced
-6. **Multi-Tenant Support** - Tenant isolation throughout
-7. **Error Handling & Compensation** - Robust error recovery and rollback
-
-The implementation leverages Elixir's OTP for fault tolerance, uses signals for loose coupling between modules, and provides complete audit trails through event sourcing.
